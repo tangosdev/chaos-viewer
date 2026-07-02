@@ -66,17 +66,47 @@ interface ChaosDb {
   functions: ChaosFunction[]
 }
 
-import chaosDb from '../data/chaos-db.json' with { type: 'json' }
+import bundledDb from '../data/chaos-db.json' with { type: 'json' }
 
-const DB: ChaosDb = chaosDb as ChaosDb
-// project identity: generator-embedded config, overridden by anything the user
-// saved locally through the setup dialog. No hardcoded project.
+const BUNDLED: ChaosDb = bundledDb as ChaosDb
+
+// ---- link config: ?repo= / ?discord= / ?data= make a fully pre-set-up shareable URL ----
+const _url = new URL(window.location.href)
+function _param(k: string) { return _url.searchParams.get(k) || _url.hash.match(new RegExp(`[#&]${k}=([^&]+)`))?.[1] }
+function _repoName(gh?: string | null) { return gh ? gh.replace(/\/+$/, '').split('/').slice(-1)[0] : undefined }
+const LINK_REPO = _param('repo') ? decodeURIComponent(_param('repo')!) : null
+const LINK_DISCORD = _param('discord') ? decodeURIComponent(_param('discord')!) : null
+// URL to a project's published chaos-db.json (its own generated data). This is what
+// makes the hosted viewer work for ANY project: point it at that project's data file.
+const DATA_URL = _param('data') ? decodeURIComponent(_param('data')!) : null
+const HAS_LINK = !!(LINK_REPO || DATA_URL)
+
+const urlProject: Partial<ProjectConfig> = {}
+if (LINK_REPO) { urlProject.github = LINK_REPO; urlProject.name = _repoName(LINK_REPO) }
+if (LINK_DISCORD) urlProject.discord = LINK_DISCORD
+
+// localStorage config is used only when the URL did NOT specify one (so a shared
+// link works regardless of what the recipient saved before).
 const savedProject: Partial<ProjectConfig> | null = (() => {
+  if (HAS_LINK) return null
   try { return JSON.parse(localStorage.getItem('chaos-project') || 'null') } catch { return null }
 })()
-const P: ProjectConfig = { ...(DB.project ?? {}), ...(savedProject ?? {}) } as ProjectConfig
-const NEEDS_SETUP = !P.github
+
+// P starts from the bundled data's project; the runtime data load can refine it.
+let P: ProjectConfig = { ...(BUNDLED.project ?? {}), ...(savedProject ?? {}), ...urlProject } as ProjectConfig
+const NEEDS_SETUP = !P.github && !DATA_URL
+// details chunks live next to the data file
+let DETAILS_BASE = DATA_URL ? DATA_URL.replace(/[^/]*$/, '') + 'details/' : `${import.meta.env.BASE_URL}details/`
 const BATCH_MAX = 16
+
+function shareLink() {
+  const base = window.location.origin + window.location.pathname
+  const q = new URLSearchParams()
+  if (DATA_URL) q.set('data', DATA_URL)
+  if (P.github) q.set('repo', P.github)
+  if (P.discord && !DATA_URL) q.set('discord', P.discord)
+  return `${base}?${q.toString()}`
+}
 const AUTHOR = 'Brennen (Tango)'
 const AUTHOR_URL = 'https://github.com/bmanus2-dotcom'
 
@@ -120,7 +150,7 @@ const detailCache = new Map<string, Record<string, FunctionDetail>>()
 async function fetchDetail(module: string, name: string): Promise<FunctionDetail | null> {
   if (!detailCache.has(module)) {
     try {
-      const res = await fetch(`${import.meta.env.BASE_URL}details/${module}.json`)
+      const res = await fetch(`${DETAILS_BASE}${module}.json`)
       if (!res.ok) return null
       detailCache.set(module, await res.json())
     } catch {
@@ -350,6 +380,13 @@ function SetupModal({ open, onClose, contrib, setContrib }: { open: boolean; onC
           />
         </details>
         {err && <div className="text-xs text-rose-600">{err}</div>}
+        {P.github && (
+          <button onClick={() => { navigator.clipboard?.writeText(shareLink()).catch(() => {}) }}
+                  className="w-full glass px-3 py-2 text-xs text-left hover:brightness-105">
+            <span className="font-medium text-aero-primary">Copy shareable setup link</span>
+            <span className="block text-[11px] text-aero-muted break-all mt-0.5">{shareLink()}</span>
+          </button>
+        )}
         <label className="flex items-start gap-2 text-sm cursor-pointer pt-1">
           <input type="checkbox" checked={contrib} onChange={e => setContrib(e.target.checked)} className="mt-0.5 accent-aero-primary" />
           <span>
@@ -358,6 +395,10 @@ function SetupModal({ open, onClose, contrib, setContrib }: { open: boolean; onC
           </span>
         </label>
         <div className="flex justify-end gap-2">
+          <button onClick={() => { localStorage.removeItem('chaos-project'); location.href = location.origin + location.pathname }}
+                  className="px-3 py-1 text-sm text-aero-muted hover:text-rose-600 mr-auto" title="forget the saved repo and use this build's bundled project">
+            Reset
+          </button>
           {P.github && <button onClick={onClose} className="px-3 py-1 text-sm text-aero-muted hover:text-aero-text">cancel</button>}
           <button onClick={save} className="aero-button px-4 py-1.5 text-sm">Save</button>
         </div>
@@ -370,7 +411,19 @@ type PriorityMode = 'nearly' | 'scaffolded' | 'biggest'
 type SortMode = 'name' | 'pctAsc' | 'pctDesc' | 'count' | 'bytes'
 
 function App() {
-  const db = DB
+  const [db, setDb] = useState<ChaosDb>(BUNDLED)
+  const [dataLoading, setDataLoading] = useState(!!DATA_URL)
+  useEffect(() => {
+    if (!DATA_URL) return
+    let cancelled = false
+    fetch(DATA_URL).then(r => r.ok ? r.json() : Promise.reject(r.status)).then((j: ChaosDb) => {
+      if (cancelled) return
+      if (j.project) P = { ...j.project, ...urlProject }   // URL repo/discord still win
+      setDb(j)
+      setDataLoading(false)
+    }).catch(() => { if (!cancelled) setDataLoading(false) })
+    return () => { cancelled = true }
+  }, [])
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -561,6 +614,13 @@ function App() {
   return (
     <div className="min-h-screen text-[15px] text-aero-text">
       <Bubbles avatars={avatars} />
+      {!dataLoading && !DATA_URL && P.github && db.project?.name && _repoName(P.github) !== db.project.name && (
+        <div className="fixed top-0 inset-x-0 z-40 pointer-events-auto text-center text-[12px] py-1.5 px-4"
+             style={{ background: 'rgb(240 160 40 / 0.95)', color: '#3a2600' }}>
+          Linked to <b>{P.name}</b>, but the data shown is <b>{db.project.name}</b>. To view {P.name}&apos;s
+          functions, generate its data (see ADAPTING.md) and open this page with <code>?data=&lt;url-to-chaos-db.json&gt;</code>.
+        </div>
+      )}
       <SetupModal open={setupOpen} onClose={() => setSetupOpen(false)} contrib={contribBubbles} setContrib={setContribBubbles} />
 
       <div className="relative z-10 w-full max-w-[1900px] mx-auto px-4 sm:px-6 xl:px-10 py-6 xl:py-8 select-none">

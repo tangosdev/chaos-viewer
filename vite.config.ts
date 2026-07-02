@@ -4,6 +4,9 @@ import { viteSingleFile } from 'vite-plugin-singlefile'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // relative base so the built site works anywhere: GitHub Pages subpath,
+  // Netlify/Vercel root, or a single file opened locally
+  base: './',
   plugins: [react(), viteSingleFile()],
   server: {
     proxy: {

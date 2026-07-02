@@ -146,14 +146,19 @@ function promptSection(fn: ChaosFunction, det: FunctionDetail | null) {
     lines.push('```')
   }
   if (det?.disasm?.length) {
+    const MAXD = 90
+    const truncated = det.disasm.length > MAXD
+    const dis = truncated
+      ? det.disasm.slice(0, MAXD).concat([`... (${det.disasm.length - MAXD} more lines omitted to keep this prompt pasteable - in the repo run  python tools/abrow.py --name ${fn.name}  for the full annotated listing)`])
+      : det.disasm
     lines.push(``)
-    lines.push(`TARGET DISASSEMBLY (annotated, callees resolved):`)
+    lines.push(truncated ? `TARGET DISASSEMBLY (first ${MAXD} of ${det.disasm.length} lines, annotated):` : `TARGET DISASSEMBLY (annotated, callees resolved):`)
     lines.push('```')
-    lines.push(det.disasm.join('\n'))
+    lines.push(dis.join('\n'))
     if (det.pool?.length) {
       lines.push(``)
       lines.push(`pool slots:`)
-      for (const p of det.pool) lines.push(`  ${p}`)
+      for (const pl of det.pool.slice(0, 40)) lines.push(`  ${pl}`)
     }
     lines.push('```')
   }
@@ -497,7 +502,7 @@ function App() {
       <SetupModal open={setupOpen} onClose={() => setSetupOpen(false)} />
 
       <div className="relative z-10 w-full max-w-[1900px] mx-auto px-4 sm:px-6 xl:px-10 py-6 xl:py-8">
-        <header className="mb-6 flex items-end justify-between">
+        <header className="mb-6 flex items-end justify-between select-none">
           <div>
             <div className="flex items-center gap-3">
               <PopLogo />

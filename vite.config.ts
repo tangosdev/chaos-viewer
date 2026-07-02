@@ -5,6 +5,16 @@ import { viteSingleFile } from 'vite-plugin-singlefile'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), viteSingleFile()],
+  server: {
+    proxy: {
+      // the claims service has no CORS headers; proxy it so the app can show
+      // live locked/free status while developing locally
+      '/api/claims': {
+        target: 'https://belongto.us',
+        changeOrigin: true,
+      },
+    },
+  },
   build: {
     // Reasonable for viewer with embedded data
     chunkSizeWarningLimit: 1200,

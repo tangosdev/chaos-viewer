@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Search, BarChart3, Code2, ChevronRight, X, Target, Link2, FileCode } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Search, BarChart3, Code2, ChevronRight, X, Target, Link2, FileCode, Lock, RefreshCw, Plus, Minus } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Treemap } from './components/Treemap'
 import './App.css'
@@ -28,6 +28,15 @@ interface FunctionDetail {
   draftDiv?: number
 }
 
+interface Claim {
+  id?: string
+  module: string
+  start: string | number
+  end: string | number
+  handle?: string
+  note?: string
+}
+
 interface ChaosDb {
   generatedAt: string
   stats: {
@@ -44,6 +53,7 @@ import chaosDb from '../data/chaos-db.json' with { type: 'json' }
 
 const DB: ChaosDb = chaosDb as ChaosDb
 const GITHUB = 'https://github.com/bmanus2-dotcom/sm64ds-decomp'
+const BATCH_MAX = 16
 
 const detailCache = new Map<string, Record<string, FunctionDetail>>()
 
@@ -64,27 +74,39 @@ function formatPct(n: number, d: number) {
   return d ? ((n / d) * 100).toFixed(2) : '0.00'
 }
 
-function buildPrompt(fn: ChaosFunction, det: FunctionDetail | null) {
+function toNum(v: string | number): number {
+  return typeof v === 'number' ? v : parseInt(v, v.startsWith('0x') ? 16 : 10)
+}
+
+// ---- prompt building ------------------------------------------------------
+
+function promptHeader(n: number) {
+  return [
+    `Match ${n === 1 ? 'one Super Mario 64 DS function' : `${n} Super Mario 64 DS functions`} to the retail ROM, byte-for-byte, with mwccarm.`,
+    ``,
+    `SETUP (once): clone ${GITHUB} and follow CONTRIBUTING.md`,
+    `(python deps + mwccarm from the DS-decomp Discord + tools/unpack.py on YOUR OWN cartridge dump).`,
+    ``,
+    `COMPILER: mwccarm 1.2/sp2p3. Flags (C): -O4,p -enum int -lang c99 -char signed -interworking -proc arm946e -gccext,on -msgstyle gcc`,
+    `If a name starts with _Z (C++ mangled), write C++ with the FIRST LINE exactly //cpp`,
+    ``,
+    `READ FIRST: notes/mwccarm-codegen.md (esp. sec 6e-6g levers: u64-mask laundering for`,
+    `materialized bases, declaration/statement order for register coloring, //cpp dummy-vtable`,
+    `dispatch, struct-copy interleave) and notes/pret-idioms.md. Coordinate via CLAIMS.md.`,
+  ].join('\n')
+}
+
+function promptSection(fn: ChaosFunction, det: FunctionDetail | null) {
   const lines: string[] = []
-  lines.push(`Match one Super Mario 64 DS function to the retail ROM, byte-for-byte, with mwccarm.`)
-  lines.push(``)
+  lines.push(`${'='.repeat(70)}`)
   lines.push(`FUNCTION: ${fn.name}   module: ${fn.module}   addr: 0x${fn.addr.toString(16)}   size: ${fn.size} bytes`)
-  lines.push(``)
-  lines.push(`SETUP (once): clone ${GITHUB} and follow CONTRIBUTING.md`)
-  lines.push(`(python deps + mwccarm from the DS-decomp Discord + tools/unpack.py on YOUR OWN cartridge dump).`)
-  lines.push(``)
-  lines.push(`COMPILER: mwccarm 1.2/sp2p3. Flags (C): -O4,p -enum int -lang c99 -char signed -interworking -proc arm946e -gccext,on -msgstyle gcc`)
-  lines.push(`If the name starts with _Z (C++ mangled), write C++ with the FIRST LINE exactly //cpp`)
-  lines.push(``)
-  lines.push(`VERIFY every attempt (relocation-aware byte compare, prints the exact mismatching instructions):`)
+  lines.push(`VERIFY every attempt (relocation-aware byte compare):`)
   lines.push(`  python tools/match.py --c yourfile.c --func ${fn.name} --addr 0x${fn.addr.toString(16)} --size 0x${fn.size.toString(16)} --version 1.2/sp2p3`)
-  lines.push(``)
-  lines.push(`READ FIRST: notes/mwccarm-codegen.md (esp. sec 6e-6g levers: u64-mask laundering for`)
-  lines.push(`materialized bases, declaration/statement order for register coloring, //cpp dummy-vtable`)
-  lines.push(`dispatch, struct-copy interleave) and notes/pret-idioms.md. Coordinate via CLAIMS.md.`)
   if (fn.sibling) {
-    lines.push(``)
     lines.push(`CLOSEST MATCHED SIBLING (opcode similarity ${fn.sim}): src/${fn.sibling}.c[pp] - use it as your scaffold.`)
+  }
+  if (fn.floor) {
+    lines.push(`WARNING: previously parked as "${fn.floor}" - check the sec 6e-6g levers before grinding.`)
   }
   if (det?.draft) {
     lines.push(``)
@@ -92,10 +114,6 @@ function buildPrompt(fn: ChaosFunction, det: FunctionDetail | null) {
     lines.push('```c')
     lines.push(det.draft.trimEnd())
     lines.push('```')
-  }
-  if (fn.floor) {
-    lines.push(``)
-    lines.push(`WARNING: previously parked as "${fn.floor}" - check the sec 6e-6g levers before grinding.`)
   }
   if (det?.disasm?.length) {
     lines.push(``)
@@ -109,22 +127,38 @@ function buildPrompt(fn: ChaosFunction, det: FunctionDetail | null) {
     }
     lines.push('```')
   }
-  lines.push(``)
-  lines.push(`Rules: only your own legally dumped ROM; never commit the ROM or anything extracted from it;`)
-  lines.push(`import struct/field knowledge (see CREDITS.md) but write all C from scratch. Matched means`)
-  lines.push(`byte-identical - iterate until tools/match.py reports a MATCH, then open a PR (one function`)
-  lines.push(`or a small family per PR, note compiler version + address).`)
   return lines.join('\n')
 }
 
-function StatusBadge({ fn }: { fn: ChaosFunction }) {
-  if (fn.matched)
-    return <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">MATCHED</span>
-  if (fn.div != null)
-    return <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/20 text-amber-300 border border-amber-400/30">NEAR-MISS · {fn.div} off</span>
-  if (fn.floor)
-    return <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-rose-500/15 text-rose-300 border border-rose-400/25" title={fn.floor}>FLOOR</span>
-  return <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-500/20 text-slate-300 border border-slate-400/25">UNMATCHED</span>
+function promptFooter(n: number) {
+  return [
+    ``,
+    `Rules: only your own legally dumped ROM; never commit the ROM or anything extracted from it;`,
+    `import struct/field knowledge (see CREDITS.md) but write all C from scratch. Matched means`,
+    `byte-identical - iterate until tools/match.py reports a MATCH${n > 1 ? ' for each function, working one at a time (verify before moving on)' : ''}, then open a PR`,
+    `(one function or a small family per PR, note compiler version + address).`,
+  ].join('\n')
+}
+
+// ---- small components ------------------------------------------------------
+
+function StatusBadge({ fn, lockedBy }: { fn: ChaosFunction; lockedBy?: string }) {
+  return (
+    <span className="inline-flex gap-1.5">
+      {fn.matched
+        ? <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">MATCHED</span>
+        : fn.div != null
+          ? <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/20 text-amber-300 border border-amber-400/30">NEAR-MISS · {fn.div} off</span>
+          : fn.floor
+            ? <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-rose-500/15 text-rose-300 border border-rose-400/25" title={fn.floor}>FLOOR</span>
+            : <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-500/20 text-slate-300 border border-slate-400/25">UNMATCHED</span>}
+      {lockedBy && !fn.matched && (
+        <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-violet-500/20 text-violet-300 border border-violet-400/30 inline-flex items-center gap-1" title={`claims-locked by ${lockedBy}`}>
+          <Lock className="w-3 h-3" /> {lockedBy}
+        </span>
+      )}
+    </span>
+  )
 }
 
 function Pill({ name, onClick }: { name: string; onClick?: () => void }) {
@@ -140,6 +174,7 @@ function Pill({ name, onClick }: { name: string; onClick?: () => void }) {
 }
 
 type PriorityMode = 'nearly' | 'scaffolded' | 'biggest'
+type SortMode = 'name' | 'pctAsc' | 'pctDesc' | 'count' | 'bytes'
 
 function App() {
   const db = DB
@@ -148,12 +183,52 @@ function App() {
   const [search, setSearch] = useState('')
   const [activeTab, setActiveTab] = useState<'treemap' | 'prioritize' | 'prompt'>('treemap')
   const [priorityMode, setPriorityMode] = useState<PriorityMode>('nearly')
+  const [sortMode, setSortMode] = useState<SortMode>('name')
   const [detail, setDetail] = useState<FunctionDetail | null>(null)
   const [copied, setCopied] = useState(false)
+  const [batch, setBatch] = useState<string[]>([])
+  const [batchPrompt, setBatchPrompt] = useState<string | null>(null)
+  const [claims, setClaims] = useState<Claim[]>([])
+  const [claimsStatus, setClaimsStatus] = useState<'loading' | 'live' | 'unavailable'>('loading')
 
   const stats = db.stats
   const fnPct = formatPct(stats.matchedFunctions, stats.totalFunctions)
   const byPct = formatPct(stats.matchedBytes, stats.totalBytes)
+
+  // ---- live claims (via the vite dev proxy; refreshes every 60s) ----------
+  async function loadClaims() {
+    try {
+      const r = await fetch('/api/claims')
+      if (!r.ok) throw new Error(String(r.status))
+      const j = await r.json()
+      setClaims(Array.isArray(j.claims) ? j.claims : [])
+      setClaimsStatus('live')
+    } catch {
+      setClaimsStatus('unavailable')
+    }
+  }
+  useEffect(() => {
+    loadClaims()
+    const t = setInterval(loadClaims, 60_000)
+    return () => clearInterval(t)
+  }, [])
+
+  const lockedBy = useMemo(() => {
+    const m = new Map<string, string>()
+    if (!claims.length) return m
+    for (const f of db.functions) {
+      if (f.matched) continue
+      for (const c of claims) {
+        if (c.module !== f.module) continue
+        const s = toNum(c.start), e = toNum(c.end)
+        if (f.addr < e && f.addr + f.size > s) {
+          m.set(f.id, c.handle || 'someone')
+          break
+        }
+      }
+    }
+    return m
+  }, [claims])
 
   const q = search.toLowerCase()
   const filtered = db.functions.filter(f =>
@@ -163,11 +238,39 @@ function App() {
     f.id.includes(q)
   )
 
-  const byName = new Map(db.functions.map(f => [f.name, f]))
-  const selectedFn = selectedId ? db.functions.find(f => f.id === selectedId) : null
+  const byName = useMemo(() => new Map(db.functions.map(f => [f.name, f])), [])
+  const byId = useMemo(() => new Map(db.functions.map(f => [f.id, f])), [])
+  const selectedFn = selectedId ? byId.get(selectedId) ?? null : null
 
-  const modules = Array.from(new Set(db.functions.map(f => f.module))).sort()
+  // ---- module list with sort ----------------------------------------------
+  const moduleStats = useMemo(() => {
+    const m = new Map<string, { total: number; matched: number; bytes: number }>()
+    for (const f of db.functions) {
+      const s = m.get(f.module) ?? { total: 0, matched: 0, bytes: 0 }
+      s.total += 1
+      if (f.matched) s.matched += 1
+      s.bytes += f.size
+      m.set(f.module, s)
+    }
+    return m
+  }, [])
 
+  const modules = useMemo(() => {
+    const mods = Array.from(moduleStats.keys())
+    const pct = (m: string) => {
+      const s = moduleStats.get(m)!
+      return s.total ? s.matched / s.total : 0
+    }
+    switch (sortMode) {
+      case 'pctAsc': return mods.sort((a, b) => pct(a) - pct(b) || a.localeCompare(b))
+      case 'pctDesc': return mods.sort((a, b) => pct(b) - pct(a) || a.localeCompare(b))
+      case 'count': return mods.sort((a, b) => moduleStats.get(b)!.total - moduleStats.get(a)!.total)
+      case 'bytes': return mods.sort((a, b) => moduleStats.get(b)!.bytes - moduleStats.get(a)!.bytes)
+      default: return mods.sort()
+    }
+  }, [sortMode, moduleStats])
+
+  // ---- selected-function detail -------------------------------------------
   useEffect(() => {
     setDetail(null)
     setCopied(false)
@@ -179,6 +282,28 @@ function App() {
     return () => { cancelled = true }
   }, [selectedId])
 
+  // ---- batch prompt ---------------------------------------------------------
+  useEffect(() => {
+    if (activeTab !== 'prompt' || batch.length === 0) {
+      setBatchPrompt(null)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      const parts: string[] = [promptHeader(batch.length)]
+      for (const id of batch) {
+        const f = byId.get(id)
+        if (!f) continue
+        const d = await fetchDetail(f.module, f.name)
+        if (cancelled) return
+        parts.push(promptSection(f, d))
+      }
+      parts.push(promptFooter(batch.length))
+      if (!cancelled) setBatchPrompt(parts.join('\n\n'))
+    })()
+    return () => { cancelled = true }
+  }, [batch, activeTab])
+
   function selectFunction(id: string) {
     setSelectedId(id)
   }
@@ -186,9 +311,12 @@ function App() {
     const f = byName.get(name)
     if (f) setSelectedId(f.id)
   }
+  function toggleBatch(id: string) {
+    setBatch(b => b.includes(id) ? b.filter(x => x !== id) : b.length < BATCH_MAX ? [...b, id] : b)
+  }
 
   const priorityRows = (() => {
-    const un = db.functions.filter(f => !f.matched)
+    const un = db.functions.filter(f => !f.matched && !lockedBy.has(f.id))
     if (priorityMode === 'nearly')
       return un.filter(f => f.div != null && !(f.cat ?? '').includes('materialization'))
         .sort((a, b) => (a.div! - b.div!) || (a.size - b.size)).slice(0, 25)
@@ -197,6 +325,11 @@ function App() {
         .sort((a, b) => b.sim! - a.sim!).slice(0, 25)
     return un.filter(f => !f.floor).sort((a, b) => b.size - a.size).slice(0, 25)
   })()
+
+  const singlePrompt = selectedFn && batch.length === 0
+    ? [promptHeader(1), promptSection(selectedFn, detail), promptFooter(1)].join('\n\n')
+    : null
+  const promptText = batchPrompt ?? singlePrompt
 
   return (
     <div className="min-h-screen text-[15px] text-aero-text">
@@ -218,13 +351,20 @@ function App() {
           <div className="text-right">
             <div className="font-semibold">{stats.matchedFunctions.toLocaleString()} / {stats.totalFunctions.toLocaleString()} functions <span className="text-aero-primary">({fnPct}%)</span></div>
             <div className="text-sm text-aero-muted">{stats.matchedBytes.toLocaleString()} / {stats.totalBytes.toLocaleString()} bytes <span className="text-aero-primary">({byPct}%)</span> • {stats.moduleCount} modules</div>
+            <div className="text-[11px] mt-0.5 flex items-center gap-1.5 justify-end">
+              <span className={`inline-block w-1.5 h-1.5 rounded-full ${claimsStatus === 'live' ? 'bg-emerald-400' : claimsStatus === 'loading' ? 'bg-amber-400' : 'bg-rose-400'}`} />
+              <span className="text-aero-muted">
+                claims {claimsStatus === 'live' ? `live · ${claims.length} active lock${claims.length === 1 ? '' : 's'}` : claimsStatus}
+              </span>
+              <button onClick={loadClaims} title="refresh claims" className="text-aero-muted hover:text-aero-primary"><RefreshCw className="w-3 h-3" /></button>
+            </div>
           </div>
         </header>
 
         <div className="flex gap-4">
           {/* Sidebar */}
           <div className="w-72 flex-shrink-0 aero-panel p-3 overflow-hidden flex flex-col" style={{ minHeight: '560px', maxHeight: '80vh' }}>
-            <div className="px-2 pb-2 flex items-center gap-2 border-b border-white/10 mb-2">
+            <div className="px-2 pb-2 flex items-center gap-2 border-b border-white/10 mb-1">
               <Search className="w-4 h-4 text-aero-muted" />
               <input
                 value={search}
@@ -235,11 +375,26 @@ function App() {
               {search && <button onClick={() => setSearch('')} className="text-aero-muted hover:text-white"><X className="w-3.5 h-3.5" /></button>}
             </div>
 
+            <div className="px-2 pb-2 flex items-center gap-2 text-[11px] text-aero-muted border-b border-white/10 mb-2">
+              <span>sort</span>
+              <select
+                value={sortMode}
+                onChange={e => setSortMode(e.target.value as SortMode)}
+                className="flex-1 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 outline-none text-aero-text text-[11px]"
+              >
+                <option value="name">name (a–z)</option>
+                <option value="pctAsc">% matched ↑ (worst first)</option>
+                <option value="pctDesc">% matched ↓ (best first)</option>
+                <option value="count">most functions</option>
+                <option value="bytes">most bytes</option>
+              </select>
+            </div>
+
             <div className="flex-1 overflow-auto text-sm space-y-px pr-1 custom-scroll">
               {modules.map(mod => {
                 const modFns = filtered.filter(f => f.module === mod)
                 if (search && modFns.length === 0) return null
-                const matchedInMod = modFns.filter(f => f.matched).length
+                const s = moduleStats.get(mod)!
                 const open = selectedPath === mod || (!!search && modFns.length <= 60)
                 return (
                   <div key={mod} className="mb-1">
@@ -248,16 +403,16 @@ function App() {
                       className={`w-full flex items-center justify-between px-2 py-1 rounded hover:bg-white/5 text-left ${selectedPath === mod ? 'bg-aero-primary/20 text-aero-primary' : 'text-aero-text'}`}
                     >
                       <span className="font-medium">{mod}</span>
-                      <span className="text-[11px] tabular-nums text-aero-muted">{matchedInMod}/{modFns.length}</span>
+                      <span className="text-[11px] tabular-nums text-aero-muted">{formatPct(s.matched, s.total)}% · {s.matched}/{s.total}</span>
                     </button>
                     {open && modFns.slice(0, 400).map(fn => (
                       <button
                         key={fn.id}
                         onClick={() => selectFunction(fn.id)}
                         className={`w-full text-left pl-6 pr-2 py-0.5 text-xs truncate rounded flex items-center gap-1.5 hover:bg-white/5 ${selectedId === fn.id ? 'bg-aero-primary/15 text-aero-primary font-medium' : 'text-aero-muted'}`}
-                        title={fn.name}
+                        title={lockedBy.has(fn.id) ? `${fn.name} (locked by ${lockedBy.get(fn.id)})` : fn.name}
                       >
-                        <span className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${fn.matched ? 'bg-aero-matched' : fn.div != null ? 'bg-amber-400' : 'bg-aero-unmatched'}`} />
+                        <span className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${fn.matched ? 'bg-aero-matched' : lockedBy.has(fn.id) ? 'bg-violet-400' : fn.div != null ? 'bg-amber-400' : 'bg-aero-unmatched'}`} />
                         {fn.name}
                       </button>
                     ))}
@@ -265,7 +420,7 @@ function App() {
                 )
               })}
             </div>
-            <div className="text-[10px] text-aero-muted/60 px-2 pt-2 border-t border-white/10">Snapshot {db.generatedAt} • amber dot = near-miss draft exists</div>
+            <div className="text-[10px] text-aero-muted/60 px-2 pt-2 border-t border-white/10">Snapshot {db.generatedAt} • amber = near-miss draft • violet = claims-locked</div>
           </div>
 
           {/* Main content */}
@@ -274,7 +429,7 @@ function App() {
               {[
                 { id: 'treemap' as const, label: 'Treemap Explorer', icon: BarChart3 },
                 { id: 'prioritize' as const, label: 'Prioritize', icon: Target },
-                { id: 'prompt' as const, label: 'Prompt Builder', icon: Code2 },
+                { id: 'prompt' as const, label: `Prompt Builder${batch.length ? ` (${batch.length})` : ''}`, icon: Code2 },
               ].map(tab => {
                 const Icon = tab.icon
                 const active = activeTab === tab.id
@@ -315,7 +470,7 @@ function App() {
               {activeTab === 'prioritize' && (
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <div className="font-medium">Prioritize — pick your fight</div>
+                    <div className="font-medium">Prioritize — pick your fight <span className="text-[11px] text-aero-muted font-normal">(claims-locked functions hidden)</span></div>
                     <div className="flex gap-1">
                       {([
                         ['nearly', 'Nearly done'],
@@ -333,16 +488,24 @@ function App() {
                     {priorityMode === 'nearly' && 'Stored near-miss drafts, fewest diverging instructions first (compiler-floor categories excluded). These are 1-6 instructions from done - the draft is in the Prompt Builder.'}
                     {priorityMode === 'scaffolded' && 'Unmatched functions with the closest already-matched opcode twin. The sibling source is your template - highest hit rate per attempt.'}
                     {priorityMode === 'biggest' && 'Largest unmatched by bytes (documented floors excluded). Hardest, but each one moves the code-size bar the most.'}
+                    {' '}Use + to queue several into one batch prompt (max {BATCH_MAX}).
                   </div>
                   <div className="space-y-px text-sm max-h-[340px] overflow-auto custom-scroll pr-1">
                     {priorityRows.map(f => (
-                      <div key={f.id} onClick={() => selectFunction(f.id)} className={`aero-panel px-3 py-1 flex justify-between items-center cursor-pointer hover:border-aero-primary/30 ${selectedId === f.id ? 'border-aero-primary/60' : ''}`}>
-                        <div className="font-mono text-xs truncate pr-3">{f.name}</div>
+                      <div key={f.id} className={`aero-panel px-3 py-1 flex justify-between items-center hover:border-aero-primary/30 ${selectedId === f.id ? 'border-aero-primary/60' : ''}`}>
+                        <div onClick={() => selectFunction(f.id)} className="font-mono text-xs truncate pr-3 cursor-pointer flex-1">{f.name}</div>
                         <div className="tabular-nums text-aero-muted text-[11px] shrink-0 flex items-center gap-2">
                           {priorityMode === 'nearly' && <span className="text-amber-300">{f.div} off</span>}
                           {priorityMode === 'scaffolded' && <span className="text-aero-primary">sim {f.sim}</span>}
                           <span>{f.size.toLocaleString()} B</span>
                           <span>{f.module}</span>
+                          <button
+                            onClick={() => toggleBatch(f.id)}
+                            title={batch.includes(f.id) ? 'remove from batch' : 'add to batch prompt'}
+                            className={`p-0.5 rounded ${batch.includes(f.id) ? 'text-amber-300 hover:text-rose-300' : 'text-aero-muted hover:text-aero-primary'}`}
+                          >
+                            {batch.includes(f.id) ? <Minus className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -354,29 +517,48 @@ function App() {
               {activeTab === 'prompt' && (
                 <div>
                   <div className="font-medium mb-2">Prompt Builder — paste into Claude Code (or any assistant) and go</div>
-                  {!selectedFn ? (
-                    <div className="text-aero-muted">Select a function from the sidebar, treemap, or Prioritize tab.</div>
+
+                  {batch.length > 0 && (
+                    <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                      <span className="text-[11px] text-aero-muted">Batch ({batch.length}/{BATCH_MAX}):</span>
+                      {batch.map(id => {
+                        const f = byId.get(id)
+                        return f ? (
+                          <span key={id} className="inline-flex items-center gap-1 bg-white/10 rounded px-2 py-0.5 text-[11px] font-mono">
+                            {f.name}
+                            <button onClick={() => toggleBatch(id)} className="text-aero-muted hover:text-rose-300"><X className="w-3 h-3" /></button>
+                          </span>
+                        ) : null
+                      })}
+                      <button onClick={() => setBatch([])} className="text-[11px] text-aero-muted hover:text-rose-300 underline ml-1">clear</button>
+                    </div>
+                  )}
+
+                  {!promptText ? (
+                    <div className="text-aero-muted">Select a function (sidebar / treemap / Prioritize), or queue several with the + buttons for one batch prompt.</div>
                   ) : (
                     <div className="space-y-3">
-                      <div className="text-sm flex items-center gap-2 flex-wrap">
-                        Target: <span className="font-mono text-aero-primary">{selectedFn.name}</span>
-                        <span className="text-aero-muted">({selectedFn.module} @ 0x{selectedFn.addr.toString(16)} — {selectedFn.size.toLocaleString()} B)</span>
-                        <StatusBadge fn={selectedFn} />
-                        {selectedFn.matched && <span className="text-[11px] text-aero-muted">already matched — pick an unmatched one</span>}
-                      </div>
-                      <pre className="glass p-3 text-[11px] overflow-auto max-h-[300px] whitespace-pre-wrap mono leading-snug">{buildPrompt(selectedFn, detail)}</pre>
+                      {batch.length === 0 && selectedFn && (
+                        <div className="text-sm flex items-center gap-2 flex-wrap">
+                          Target: <span className="font-mono text-aero-primary">{selectedFn.name}</span>
+                          <span className="text-aero-muted">({selectedFn.module} @ 0x{selectedFn.addr.toString(16)} — {selectedFn.size.toLocaleString()} B)</span>
+                          <StatusBadge fn={selectedFn} lockedBy={lockedBy.get(selectedFn.id)} />
+                          <button onClick={() => toggleBatch(selectedFn.id)} className="aero-button px-2 py-0.5 text-[11px] inline-flex items-center gap-1"><Plus className="w-3 h-3" /> add to batch</button>
+                        </div>
+                      )}
+                      <pre className="glass p-3 text-[11px] overflow-auto max-h-[300px] whitespace-pre-wrap mono leading-snug">{promptText}</pre>
                       <button
                         onClick={() => {
-                          navigator.clipboard.writeText(buildPrompt(selectedFn, detail)).then(() => {
+                          navigator.clipboard.writeText(promptText).then(() => {
                             setCopied(true)
                             setTimeout(() => setCopied(false), 1600)
                           })
                         }}
                         className="aero-button px-3 py-1 text-sm"
                       >
-                        {copied ? 'Copied ✓' : 'Copy prompt'}
+                        {copied ? 'Copied ✓' : `Copy prompt${batch.length ? ` (${batch.length} functions)` : ''}`}
                       </button>
-                      {!detail && <span className="text-[11px] text-aero-muted ml-2">loading disassembly/draft…</span>}
+                      {batch.length === 0 && selectedFn && !detail && <span className="text-[11px] text-aero-muted ml-2">loading disassembly/draft…</span>}
                     </div>
                   )}
                 </div>
@@ -389,10 +571,17 @@ function App() {
                 <motion.div initial={{opacity:0, y:6}} animate={{opacity:1, y:0}} exit={{opacity:0}} className="aero-panel p-4 space-y-3">
                   <div className="flex justify-between items-start">
                     <div>
-                      <div className="font-semibold mono text-lg flex items-center gap-3">{selectedFn.name} <StatusBadge fn={selectedFn} /></div>
+                      <div className="font-semibold mono text-lg flex items-center gap-3">{selectedFn.name} <StatusBadge fn={selectedFn} lockedBy={lockedBy.get(selectedFn.id)} /></div>
                       <div className="text-xs text-aero-muted mt-0.5">{selectedFn.module} • 0x{selectedFn.addr.toString(16)} • {selectedFn.size.toLocaleString()} bytes{selectedFn.cat ? ` • ${selectedFn.cat}` : ''}</div>
                     </div>
-                    <button onClick={clearSelectionButton(setSelectedId)} className="text-aero-muted hover:text-white"><X className="w-4 h-4" /></button>
+                    <div className="flex items-center gap-2">
+                      {!selectedFn.matched && (
+                        <button onClick={() => toggleBatch(selectedFn.id)} className="aero-button px-2 py-0.5 text-[11px] inline-flex items-center gap-1">
+                          {batch.includes(selectedFn.id) ? <><Minus className="w-3 h-3" /> remove from batch</> : <><Plus className="w-3 h-3" /> add to batch</>}
+                        </button>
+                      )}
+                      <button onClick={() => setSelectedId(null)} className="text-aero-muted hover:text-white"><X className="w-4 h-4" /></button>
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap gap-4 text-xs">
@@ -435,7 +624,7 @@ function App() {
                       )}
 
                       {detail.disasm && (
-                        <div className={`glass p-3 rounded-lg ${detail.draft ? '' : 'lg:col-span-1'}`}>
+                        <div className="glass p-3 rounded-lg">
                           <div className="text-[11px] uppercase tracking-wide text-aero-muted mb-1">Annotated disassembly ({detail.disasm.length} lines)</div>
                           <pre className="text-[10.5px] mono overflow-auto max-h-[200px] leading-snug">{detail.disasm.join('\n')}</pre>
                         </div>
@@ -450,15 +639,11 @@ function App() {
         </div>
 
         <footer className="mt-8 text-[10px] text-aero-muted/50 text-center">
-          Chaos Viewer • data from sm64ds-decomp tools (modules/sweep/ledger/coddog/nearmiss) • inspired by Mizuchi Decomp Atlas
+          Chaos Viewer • data from sm64ds-decomp tools (modules/sweep/ledger/coddog/nearmiss) + live claims • inspired by Mizuchi Decomp Atlas
         </footer>
       </div>
     </div>
   )
-}
-
-function clearSelectionButton(setSelectedId: (v: string | null) => void) {
-  return () => setSelectedId(null)
 }
 
 export default App

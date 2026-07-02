@@ -1,0 +1,103 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Chaos Viewer — Frutiger Aero dark glass theme (colors locked after avatar inspection per plan) */
+:root {
+  --aero-primary: #00AEEF;
+  --aero-accent: #7FC400;
+  --aero-gloss: #E6F7FF;
+  --aero-bg: #0A1625;
+  --aero-panel: rgba(16, 32, 55, 0.65);
+  --aero-border: rgba(255, 255, 255, 0.12);
+  --aero-text: #E8F4FC;
+  --aero-muted: #8FB8D8;
+  --aero-matched: #2ECC71;
+  --aero-unmatched: #4A5568;
+  --aero-glass: rgba(255, 255, 255, 0.06);
+
+  --sans: system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--aero-bg);
+  color: var(--aero-text);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Glassmorphism aero panels */
+.aero-panel {
+  background: var(--aero-panel);
+  border: 1px solid var(--aero-border);
+  border-radius: 16px;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+.aero-button {
+  background: linear-gradient(145deg, var(--aero-primary), #0088CC);
+  color: white;
+  border-radius: 10px;
+  transition: all 0.15s ease;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+.aero-button:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 4px 15px rgba(0, 174, 239, 0.4);
+}
+.aero-button:active {
+  transform: translateY(1px);
+}
+
+.glass {
+  background: var(--aero-glass);
+  border: 1px solid var(--aero-border);
+  backdrop-filter: blur(16px);
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+/* Subtle aero orbs / bubbles for background interest (Frutiger Aero lite) */
+.aero-bg-orbs {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  overflow: hidden;
+}
+.aero-bg-orbs::before,
+.aero-bg-orbs::after {
+  content: '';
+  position: absolute;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0,174,239,0.06) 0%, transparent 70%);
+  animation: aero-float 28s ease-in-out infinite;
+}
+.aero-bg-orbs::after {
+  width: 260px;
+  height: 260px;
+  background: radial-gradient(circle, rgba(127,196,0,0.05) 0%, transparent 70%);
+  animation-delay: -12s;
+  left: 60%;
+  top: 40%;
+}
+@keyframes aero-float {
+  0%,100% { transform: translate(0,0) scale(1); }
+  50% { transform: translate(30px, -40px) scale(1.08); }
+}
+
+/* Selection + treemap styles */
+.func-selected {
+  outline: 2px solid var(--aero-primary);
+  outline-offset: 1px;
+}

@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-07-02",
+  "stats": {
+    "totalFunctions": 11323,
+    "matchedFunctions": 7612,
+    "totalBytes": 2210852,
+    "matchedBytes": 772508,
+    "moduleCount": 73
+  },
+  "functions": [
+    {"id": "arm9:0x0200f8f8", "module": "arm9", "name": "PlaySecretSound", "addr": 34024952, "size": 128, "matched": true, "srcPath": "src/PlaySecretSound.c"},
+    {"id": "arm9:0x0200f97c", "module": "arm9", "name": "Actor_SpawnSoundObj", "addr": 34025212, "size": 64, "matched": true, "srcPath": "src/Actor_SpawnSoundObj.c"},
+    {"id": "arm9:0x0200f9b8", "module": "arm9", "name": "Actor_KillAndTrackInDeathTable", "addr": 34025272, "size": 32, "matched": false},
+    {"id": "arm9:0x02004800", "module": "arm9", "name": "_start", "addr": 33558528, "size": 496, "matched": true, "srcPath": "src/ARMSaveContext.c"},
+    {"id": "arm9:0x0200e338", "module": "arm9", "name": "Camera_Behavior", "addr": 34033656, "size": 1408, "matched": false},
+    {"id": "ov000:0x02100000", "module": "ov000", "name": "SomeOverlayFunc", "addr": 34603008, "size": 256, "matched": true, "srcPath": "src/SomeOverlayFunc.c"}
+  ]
+}

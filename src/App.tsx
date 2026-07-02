@@ -175,7 +175,7 @@ function App() {
                       if (id === '__clear__') { setSelectedId(null); return }
                       selectFunction(id)
                     }}
-                    width={Math.min(1180, window.innerWidth - 380)}
+                    width={1080}
                     height={420}
                   />
                   <div className="mt-2 text-[11px] text-aero-muted">Green = matched (exact bytes). Gray = unmatched. Modules sized by total mass. Same layout math as the README treemap.</div>

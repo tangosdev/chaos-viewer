@@ -6,8 +6,16 @@ Inspired directly by the Decomp Atlas UI from https://github.com/macabeus/mizuch
 
 - Interactive squarified treemap (exact same layout math as the project's README progress SVG)
 - Module sidebar + live search/filter that syncs across views
-- Prioritize tab for largest unmatched targets
-- Prompt Builder that emits a ready-to-paste matching-decomp template
+- Prioritize tab with three modes: Nearly done (near-miss drafts by divergence), Best
+  scaffolded (closest matched opcode twin via coddog), Biggest bytes (floors excluded)
+- Mizuchi-style function details: status badges, clickable caller/callee pills, the
+  closest matched twin, annotated disassembly, and the stored near-miss draft
+- Prompt Builder emits a COMPLETE ready-to-paste task: repo setup, compiler flags, the
+  verify command, pointers to the codegen levers, the sibling scaffold, the annotated
+  disassembly, and the near-miss draft when one exists (start 1-6 instructions from done)
+- Data pipeline: scripts/generate-chaos-db.py reads the decomp's own tools
+  (modules/sweep/ledger/coddog/nearmiss) -> lean 1.8MB index + 73 per-module lazy detail
+  chunks under public/details/ (no ROM bytes, disassembly text only)
 - Glassmorphism + aero palette (cyan #00AEEF + lime #7FC400 + gloss) derived from the maintainer's GitHub avatar + classic Frutiger Aero references
 
 ## Quick start (for contributors / viewers)
@@ -23,7 +31,8 @@ To update the data after new matches land in sm64ds-decomp:
 
 ```bash
 # from a fresh sm64ds-decomp checkout that has extracted/ + progress/ + src/
-python /path/to/this/ChaosViewer/scripts/generate-chaos-db.py --out /path/to/this/ChaosViewer/data/chaos-db.json
+python /path/to/this/ChaosViewer/scripts/generate-chaos-db.py --repo /path/to/sm64ds-decomp
+# (~40s; add --no-similar for a fast regen without the coddog twin pass)
 # then hard-refresh the viewer (or restart dev)
 ```
 

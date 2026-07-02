@@ -1,110 +1,220 @@
 #!/usr/bin/env python3
-"""Generate data/chaos-db.json for Chaos Viewer from a sm64ds-decomp checkout.
+"""Generate Chaos Viewer data from a sm64ds-decomp checkout.
 
-Run from inside (or with PYTHONPATH) a sm64ds-decomp tree that has:
-  - extracted/ (arm9_dec.bin + overlays)
-  - config/arm9/...
-  - progress/matched.jsonl (and optionally nonmatching)
-  - src/ (for srcPath lookup)
+Outputs:
+  data/chaos-db.json        lean index: stats + every function with enrichments
+                            (matched, srcPath, near-miss divergence/category,
+                            floor label, best coddog sibling for unmatched)
+  public/details/<mod>.json per-module detail chunks, lazy-fetched by the app:
+                            callees/calledBy for every function, annotated
+                            disassembly for unmatched, near-miss draft source.
 
-Example (from ChaosViewer repo):
-  cd /path/to/sm64ds-decomp
-  python /path/to/ChaosViewer/scripts/generate-chaos-db.py --out /path/to/ChaosViewer/data/chaos-db.json
+Run from the decomp tree (or pass --repo):
+  python /path/to/ChaosViewer/scripts/generate-chaos-db.py --repo C:/Users/bmanu/Documents/sm64ds-decomp
 
-This reuses the exact modules + sweep + ledger logic so numbers always match
-the treemap and the real matcher. No ROM bytes are embedded.
-
-Schema matches the TS interface in the viewer.
+Reuses the repo's own tools (modules/sweep/ledger/worklist/coddog), so numbers
+always agree with the treemap and the matcher. No ROM bytes are embedded -
+only disassembly TEXT for unmatched functions (same as the public notes).
 """
 import argparse
+import collections
 import json
 import pathlib
 import sys
 import time
 
-# Allow running from outside the decomp tree by inserting its tools/
-REPO = pathlib.Path(__file__).resolve().parent.parent  # will be overridden if needed
-# When invoked with the decomp as CWD, this still works because we add ./tools below
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default="data/chaos-db.json", help="Output JSON path (relative or absolute)")
-    ap.add_argument("--repo", default=None, help="Path to sm64ds-decomp root (defaults to CWD)")
+    here = pathlib.Path(__file__).resolve().parent.parent
+    ap.add_argument("--out", default=str(here / "data" / "chaos-db.json"))
+    ap.add_argument("--details-dir", default=str(here / "public" / "details"))
+    ap.add_argument("--repo", default=None, help="sm64ds-decomp root (default CWD)")
+    ap.add_argument("--no-similar", action="store_true",
+                    help="skip the coddog similarity pass (fast regen)")
     args = ap.parse_args()
 
     root = pathlib.Path(args.repo) if args.repo else pathlib.Path.cwd()
     tools = root / "tools"
     if not (tools / "modules.py").exists():
-        print(f"ERROR: Could not find tools/modules.py under {root}. Pass --repo or cd into the decomp checkout first.", file=sys.stderr)
+        print(f"ERROR: no tools/modules.py under {root}; pass --repo", file=sys.stderr)
         sys.exit(2)
-
     sys.path.insert(0, str(tools))
 
     import modules as MOD
-    import sweep as SW
+    import sweep
+    import swarm as S
     import ledger as L
+    import relocs as R
+    import worklist as WL
 
+    t0 = time.time()
     matched = L.matched_set()
+    gsyms = R.load_all_syms()
 
-    functions: list[dict] = []
-    total_bytes = 0
-    matched_bytes = 0
-    mod_set = set()
+    # ---- near-miss + floor enrichment ------------------------------------
+    nm = {}
+    nm_path = root / "nearmiss" / "db.jsonl"
+    if nm_path.exists():
+        for l in nm_path.read_text(encoding="utf-8").splitlines():
+            if l.strip():
+                r = json.loads(l)
+                a = r["addr"]
+                key = (r["module"], int(a, 0) if isinstance(a, str) else a)
+                nm[key] = r
+    cats = {}
+    cat_path = root / "progress" / "nm_categories.json"
+    if cat_path.exists():
+        cats = json.loads(cat_path.read_text())
+    floor = {}
+    nonm = root / "progress" / "nonmatching.jsonl"
+    if nonm.exists():
+        for l in nonm.read_text(encoding="utf-8").splitlines():
+            if l.strip():
+                r = json.loads(l)
+                a = r["addr"]
+                key = (r.get("module", "arm9"), int(a, 0) if isinstance(a, str) else a)
+                floor[key] = r.get("reason", "parked")
 
-    for mod in MOD.modules():
-        label = "arm9" if mod["name"] == "main" else mod["name"]
-        mod_set.add(label)
-        for name, addr, size in SW.funcs(mod):
-            key = (label, addr)
-            is_matched = key in matched
-            total_bytes += size
-            if is_matched:
-                matched_bytes += size
+    # ---- walk every module ------------------------------------------------
+    src_dir = root / "src"
+    mods = list(MOD.modules())
+    universe = []          # (label, name, addr, size, mod)
+    addr_index = {}        # (label, addr) -> name  for callee resolution
+    for m in mods:
+        label = "arm9" if m["name"] == "main" else m["name"]
+        for n, a, sz in sweep.funcs(m):
+            universe.append((label, n, a, sz, m))
+            addr_index[(label, a)] = n
+    print(f"universe: {len(universe)} functions ({time.time()-t0:.0f}s)", flush=True)
 
-            src_path = None
-            if is_matched:
-                c = root / "src" / f"{name}.c"
-                cpp = root / "src" / f"{name}.cpp"
-                if c.exists():
-                    src_path = f"src/{name}.c"
-                elif cpp.exists():
-                    src_path = f"src/{name}.cpp"
+    # ---- optional similarity pass (unmatched only) ------------------------
+    sims = {}
+    if not args.no_similar:
+        import coddog as CD
+        cmatched, cunmatched, _ = CD.build_corpus()
+        print(f"coddog corpus: {len(cmatched)} matched, {len(cunmatched)} unmatched "
+              f"({time.time()-t0:.0f}s); scoring...", flush=True)
+        for i, u in enumerate(cunmatched):
+            top = CD.top_siblings(u, cmatched, 1, 0.5, 0.55, 1.8)
+            if top:
+                sims[(u["module"], u["addr"])] = (round(top[0][0], 3), top[0][1]["name"])
+            if (i + 1) % 500 == 0:
+                print(f"  similarity {i+1}/{len(cunmatched)} ({time.time()-t0:.0f}s)", flush=True)
 
-            functions.append({
-                "id": f"{label}:0x{addr:08x}",
-                "module": label,
-                "name": name,
-                "addr": addr,
-                "size": size,
-                "matched": bool(is_matched),
-                "srcPath": src_path,
-            })
+    # ---- per-function pass: callees + disasm ------------------------------
+    functions = []
+    details = collections.defaultdict(dict)   # label -> name -> {...}
+    callee_map = {}                            # (label, name) -> [callee names]
+    total_bytes = matched_bytes = matched_n = 0
+    data_cache = {}
+    for label, name, addr, size, m in universe:
+        if label not in data_cache:
+            data_cache[label] = (m["bin"].read_bytes(), R.load_relocs_file(m["relocs"]))
+        data, relocs = data_cache[label]
+        code = data[addr - m["base"]:addr - m["base"] + size]
+        is_matched = (label, addr) in matched
+        total_bytes += size
+        if is_matched:
+            matched_bytes += size
+            matched_n += 1
 
+        # callees: branch-with-link targets resolved through relocs, then the
+        # in-module universe index, then global symbols
+        callees = []
+        for ins in S.md.disasm(code, 0):
+            if ins.mnemonic in ("bl", "blx"):
+                added = False
+                e = relocs.get(addr + ins.address)
+                if e is not None:
+                    cn = e[1] if isinstance(e, (tuple, list)) and len(e) > 1 else None
+                    if isinstance(cn, str) and cn and cn != name:
+                        if cn not in callees:
+                            callees.append(cn)
+                        added = True
+                if not added and ins.op_str.startswith("#"):
+                    try:
+                        tgt = addr + int(ins.op_str[1:], 0)
+                    except ValueError:
+                        tgt = None
+                    if tgt is not None:
+                        cn = addr_index.get((label, tgt)) or gsyms.get(tgt)
+                        if isinstance(cn, str) and cn and cn != name and cn not in callees:
+                            callees.append(cn)
+        callee_map[(label, name)] = callees
+
+        srcPath = None
+        for ext in ("c", "cpp"):
+            if (src_dir / f"{name}.{ext}").exists():
+                srcPath = f"src/{name}.{ext}"
+                break
+
+        key = (label, addr)
+        rec = {"id": f"{label}:0x{addr:08x}", "module": label, "name": name,
+               "addr": addr, "size": size, "matched": bool(is_matched)}
+        if srcPath:
+            rec["srcPath"] = srcPath
+        nmr = nm.get(key)
+        if nmr and not is_matched:
+            rec["div"] = nmr.get("divergences")
+            ck = f"{label}:{addr}:{nmr.get('divergences')}"
+            if ck in cats:
+                rec["cat"] = cats[ck]
+        if key in floor and not is_matched:
+            rec["floor"] = str(floor[key])[:60]
+        if key in sims and not is_matched:
+            rec["sim"], rec["sibling"] = sims[key]
+        functions.append(rec)
+
+        det = {}
+        if callees:
+            det["callees"] = callees
+        if not is_matched:
+            try:
+                lines, _, pool = WL.annotate(name, addr, size, code, relocs, gsyms)
+                det["disasm"] = lines
+                if pool:
+                    det["pool"] = pool
+            except Exception:
+                pass
+            if nmr:
+                det["draft"] = nmr.get("c_source")
+                det["draftDiv"] = nmr.get("divergences")
+        details[label][name] = det
+
+    # calledBy: invert the callee map (function names are unique in this corpus)
+    called_by = collections.defaultdict(list)
+    for (label, caller), cs in callee_map.items():
+        for cn in cs:
+            called_by[cn].append(caller)
+    for label in details:
+        for name, det in details[label].items():
+            cb = called_by.get(name)
+            if cb:
+                det["calledBy"] = sorted(set(cb))[:40]
+
+    # ---- write outputs -----------------------------------------------------
+    out = pathlib.Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
     db = {
-        "generatedAt": time.strftime("%Y-%m-%d"),
+        "generatedAt": time.strftime("%Y-%m-%d %H:%M"),
         "stats": {
-            "totalFunctions": len(functions),
-            "matchedFunctions": sum(1 for f in functions if f["matched"]),
+            "totalFunctions": len(universe),
+            "matchedFunctions": matched_n,
             "totalBytes": total_bytes,
             "matchedBytes": matched_bytes,
-            "moduleCount": len(mod_set),
+            "moduleCount": len(mods),
         },
         "functions": functions,
     }
-
-    out_path = pathlib.Path(args.out)
-    if not out_path.is_absolute():
-        # If running from decomp, write relative to the provided --out or default
-        out_path = (root / args.out) if args.repo else (pathlib.Path.cwd() / args.out)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(db, indent=2) + "\n", encoding="utf-8")
-
-    print(f"wrote {out_path}")
-    print(f"  functions: {db['stats']['matchedFunctions']}/{db['stats']['totalFunctions']} "
-          f"({100*db['stats']['matchedFunctions']/max(1,db['stats']['totalFunctions']):.2f}%)")
-    print(f"  bytes:     {db['stats']['matchedBytes']}/{db['stats']['totalBytes']} "
-          f"({100*db['stats']['matchedBytes']/max(1,db['stats']['totalBytes']):.2f}%)")
-    print(f"  modules:   {db['stats']['moduleCount']}")
+    out.write_text(json.dumps(db), encoding="utf-8")
+    ddir = pathlib.Path(args.details_dir)
+    ddir.mkdir(parents=True, exist_ok=True)
+    for label, d in details.items():
+        (ddir / f"{label}.json").write_text(json.dumps(d), encoding="utf-8")
+    print(f"wrote {out} ({out.stat().st_size//1024} KB) + {len(details)} detail chunks "
+          f"-> {ddir} ({time.time()-t0:.0f}s)")
+    print(f"stats: {matched_n}/{len(universe)} funcs, {matched_bytes}/{total_bytes} bytes")
 
 
 if __name__ == "__main__":

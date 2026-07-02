@@ -77,6 +77,8 @@ const savedProject: Partial<ProjectConfig> | null = (() => {
 const P: ProjectConfig = { ...(DB.project ?? {}), ...(savedProject ?? {}) } as ProjectConfig
 const NEEDS_SETUP = !P.github
 const BATCH_MAX = 16
+const AUTHOR = 'Brennen (Tango)'
+const AUTHOR_URL = 'https://github.com/bmanus2-dotcom'
 
 // EDIT ME: little confirmation phrases shown on the Copy button + floating bubble
 // (one is picked at random each press). Add your own.
@@ -193,9 +195,11 @@ function promptSection(fn: ChaosFunction, det: FunctionDetail | null) {
 function promptFooter(n: number) {
   const lines = [``]
   if (P.rules) lines.push(`Rules: ${P.rules}`)
+  const target = P.github ? ` to ${P.github}` : ''
   lines.push(
-    `Matched means byte-identical - iterate until the verify command reports a MATCH${n > 1 ? ' for each function, working one at a time (verify before moving on)' : ''}, then open a PR`,
-    `(one function or a small family per PR, note compiler version + address).`)
+    `Matched means byte-identical - iterate until the verify command reports a MATCH${n > 1 ? ' for each function, one at a time (verify before moving on)' : ''}.`,
+    `When it matches, fork the repo and open a pull request${target} against its default branch`,
+    `(one function or a small related family per PR; note the compiler version and the function address).`)
   return lines.join('\n')
 }
 
@@ -301,7 +305,7 @@ function PopLogo() {
   )
 }
 
-function SetupModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function SetupModal({ open, onClose, contrib, setContrib }: { open: boolean; onClose: () => void; contrib: boolean; setContrib: (v: boolean) => void }) {
   const [url, setUrl] = useState(P.github ?? '')
   const [advanced, setAdvanced] = useState('')
   const [err, setErr] = useState('')
@@ -346,6 +350,13 @@ function SetupModal({ open, onClose }: { open: boolean; onClose: () => void }) {
           />
         </details>
         {err && <div className="text-xs text-rose-600">{err}</div>}
+        <label className="flex items-start gap-2 text-sm cursor-pointer pt-1">
+          <input type="checkbox" checked={contrib} onChange={e => setContrib(e.target.checked)} className="mt-0.5 accent-aero-primary" />
+          <span>
+            <span className="font-medium">Contributor bubbles</span>
+            <span className="block text-[11px] text-aero-muted">Pull the repo's GitHub contributors and let roughly 1 in 12 background bubbles wear a contributor's avatar. Off by default; bot/Claude accounts are skipped.</span>
+          </span>
+        </label>
         <div className="flex justify-end gap-2">
           {P.github && <button onClick={onClose} className="px-3 py-1 text-sm text-aero-muted hover:text-aero-text">cancel</button>}
           <button onClick={save} className="aero-button px-4 py-1.5 text-sm">Save</button>
@@ -370,6 +381,10 @@ function App() {
   const [copied, setCopied] = useState(false)
   const [copyMsg, setCopyMsg] = useState('')
   const [copyKey, setCopyKey] = useState(0)
+  const [hideMatched, setHideMatched] = useState(false)
+  const [hideUnmatched, setHideUnmatched] = useState(false)
+  const [contribBubbles, setContribBubbles] = useState(() => localStorage.getItem('chaos-contrib') === '1')
+  const [avatars, setAvatars] = useState<string[]>([])
   const [batch, setBatch] = useState<string[]>([])
   const [batchPrompt, setBatchPrompt] = useState<string | null>(null)
   const [claims, setClaims] = useState<Claim[]>([])
@@ -393,6 +408,24 @@ function App() {
       setClaimsStatus('unavailable')
     }
   }
+  useEffect(() => {
+    localStorage.setItem('chaos-contrib', contribBubbles ? '1' : '0')
+    if (!contribBubbles || !P.github) { setAvatars([]); return }
+    const m = P.github.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/)
+    if (!m) return
+    let cancelled = false
+    fetch(`https://api.github.com/repos/${m[1]}/${m[2]}/contributors?per_page=100`)
+      .then(r => r.ok ? r.json() : [])
+      .then((list: Array<{ login?: string; type?: string; avatar_url?: string }>) => {
+        if (cancelled || !Array.isArray(list)) return
+        setAvatars(list
+          .filter(u => u && u.login && u.avatar_url && u.type !== 'Bot' && !/claude|\[bot\]|-bot$|actions/i.test(u.login))
+          .map(u => u.avatar_url as string))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [contribBubbles])
+
   useEffect(() => {
     if (!P.claimsApi) return
     loadClaims()
@@ -424,6 +457,8 @@ function App() {
     f.module.toLowerCase().includes(q) ||
     f.id.includes(q)
   )
+
+  const visible = filtered.filter(f => !(hideMatched && f.matched) && !(hideUnmatched && !f.matched))
 
   const byName = useMemo(() => new Map(db.functions.map(f => [f.name, f])), [])
   const byId = useMemo(() => new Map(db.functions.map(f => [f.id, f])), [])
@@ -525,8 +560,8 @@ function App() {
 
   return (
     <div className="min-h-screen text-[15px] text-aero-text">
-      <Bubbles />
-      <SetupModal open={setupOpen} onClose={() => setSetupOpen(false)} />
+      <Bubbles avatars={avatars} />
+      <SetupModal open={setupOpen} onClose={() => setSetupOpen(false)} contrib={contribBubbles} setContrib={setContribBubbles} />
 
       <div className="relative z-10 w-full max-w-[1900px] mx-auto px-4 sm:px-6 xl:px-10 py-6 xl:py-8 select-none">
         <header className="mb-6 flex items-end justify-between select-none">
@@ -610,9 +645,20 @@ function App() {
               </select>
             </div>
 
+            <div className="px-2 pb-2 flex items-center gap-4 text-[11px] text-aero-muted border-b border-white/70 mb-2">
+              <label className="inline-flex items-center gap-1.5 cursor-pointer hover:text-aero-text">
+                <input type="checkbox" checked={hideMatched} onChange={e => setHideMatched(e.target.checked)} className="accent-aero-primary" />
+                Hide matched
+              </label>
+              <label className="inline-flex items-center gap-1.5 cursor-pointer hover:text-aero-text">
+                <input type="checkbox" checked={hideUnmatched} onChange={e => setHideUnmatched(e.target.checked)} className="accent-aero-primary" />
+                Hide unmatched
+              </label>
+            </div>
+
             <div className="flex-1 overflow-auto text-sm space-y-px pr-1 custom-scroll">
               {modules.map(mod => {
-                const modFns = filtered.filter(f => f.module === mod)
+                const modFns = visible.filter(f => f.module === mod)
                 if (search && modFns.length === 0) return null
                 const s = moduleStats.get(mod)!
                 const open = selectedPath === mod || (!!search && modFns.length <= 60)
@@ -671,10 +717,10 @@ function App() {
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <div className="font-medium">Interactive squarified treemap (bytes per function)</div>
-                    <div className="text-xs text-aero-muted">Click rects • {filtered.length.toLocaleString()} visible after filters</div>
+                    <div className="text-xs text-aero-muted">Click rects • {visible.length.toLocaleString()} visible after filters</div>
                   </div>
                   <Treemap
-                    functions={filtered.map(f => ({ id: f.id, module: f.module, name: f.name, size: f.size, matched: f.matched }))}
+                    functions={visible.map(f => ({ id: f.id, module: f.module, name: f.name, size: f.size, matched: f.matched }))}
                     selectedId={selectedId}
                     selectedPath={selectedPath}
                     lockedIds={new Set(lockedBy.keys())}
@@ -875,11 +921,9 @@ function App() {
 
         <footer className="mt-10 pointer-events-auto text-center space-y-2 pb-4">
           <div className="flex items-center justify-center gap-4 text-[12px]">
-            {P.github && (
-              <a href={P.github} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-aero-primary hover:underline">
-                <FileCode className="w-3.5 h-3.5" /> {P.name} on GitHub
-              </a>
-            )}
+            <a href={AUTHOR_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-aero-primary hover:underline">
+              <FileCode className="w-3.5 h-3.5" /> {AUTHOR} on GitHub
+            </a>
             {P.discord && (
               <a href={P.discord} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:underline" style={{ color: '#5865F2' }}>
                 <MessageCircle className="w-3.5 h-3.5" /> Discord
@@ -890,7 +934,7 @@ function App() {
             </a>
           </div>
           <div className="text-[10px] text-aero-muted/70 leading-relaxed max-w-[680px] mx-auto">
-            Chaos Viewer &copy; {new Date().getFullYear()} Brennen (Tango). Released under the MIT License.
+            Chaos Viewer &copy; {new Date().getFullYear()} <a href={AUTHOR_URL} target="_blank" rel="noreferrer" className="underline hover:text-aero-text">{AUTHOR}</a>. Released under the MIT License.
             Progress data generated from the {P.name || 'project'} tooling; no copyrighted ROM or extracted
             assets are included or distributed. All trademarks and game assets belong to their respective owners
             and are not affiliated with or endorsed by this project.

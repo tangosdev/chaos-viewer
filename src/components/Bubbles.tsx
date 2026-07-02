@@ -3,21 +3,20 @@ import { useEffect, useRef } from 'react'
 interface Bubble {
   el: HTMLDivElement
   r: number
-  x: number          // base horizontal anchor
+  x: number          // horizontal anchor
   y: number          // current vertical position (rises over time)
   rise: number       // px/sec upward
   swayAmp: number    // horizontal sway amplitude (px)
   swaySpeed: number  // sway frequency
   swayPhase: number
-  pushX: number      // soft cursor-displacement, decays back to 0
-  pushY: number
-  popped: boolean
+  popT: number       // pop progress 0..1 (0 = not popping)
+  popped: boolean    // hidden / waiting to respawn
 }
 
 /** Interactive Frutiger Aero bubble field: bubbles rise on a gentle wind, sway
- *  side to side, drift softly away from the cursor, and pop when clicked
- *  anywhere on them (then respawn from below). */
-export function Bubbles({ count = 14 }: { count?: number }) {
+ *  left-right, pop when the cursor passes over them (works even behind the UI),
+ *  and respawn from below. A fraction can wear a contributor's avatar. */
+export function Bubbles({ count = 14, avatars = [] }: { count?: number; avatars?: string[] }) {
   const holder = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -26,6 +25,21 @@ export function Bubbles({ count = 14 }: { count?: number }) {
     const host: HTMLDivElement = hostEl
     const bubbles: Bubble[] = []
     const mouse = { x: -9999, y: -9999 }
+    const GLOSS = 'radial-gradient(circle at 32% 26%, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.3) 16%, rgba(255,255,255,0.05) 42%, rgba(190,230,255,0.12) 100%)'
+
+    function dress(b: Bubble) {
+      // ~1 in 12 bubbles wears a contributor avatar, when any are available
+      if (avatars.length && Math.random() < 1 / 12) {
+        const url = avatars[Math.floor(Math.random() * avatars.length)]
+        b.el.style.backgroundImage = `${GLOSS}, url("${url}")`
+        b.el.style.backgroundSize = 'cover, cover'
+        b.el.style.backgroundPosition = 'center, center'
+      } else {
+        b.el.style.backgroundImage = GLOSS
+        b.el.style.backgroundSize = ''
+        b.el.style.backgroundPosition = ''
+      }
+    }
 
     function reset(b: Bubble, fromBottom: boolean) {
       b.r = 14 + Math.random() * 42
@@ -33,34 +47,23 @@ export function Bubbles({ count = 14 }: { count?: number }) {
       b.x = Math.random() * window.innerWidth
       b.y = fromBottom ? window.innerHeight + b.r + Math.random() * 220
                        : Math.random() * window.innerHeight
-      b.rise = 10 + Math.random() * 20            // px/sec
-      b.swayAmp = 12 + Math.random() * 46
-      b.swaySpeed = 0.15 + Math.random() * 0.35
+      b.rise = 10 + Math.random() * 20
+      b.swayAmp = 20 + Math.random() * 55        // a touch wider for a nicer left-right drift
+      b.swaySpeed = 0.12 + Math.random() * 0.28
       b.swayPhase = Math.random() * Math.PI * 2
-      b.pushX = 0
-      b.pushY = 0
+      b.popT = 0
       b.popped = false
+      b.el.style.opacity = '1'
+      dress(b)
     }
 
     function makeBubble(): Bubble {
       const el = document.createElement('div')
       el.className = 'aero-bubble'
-      const b: Bubble = { el, r: 20, x: 0, y: 0, rise: 15, swayAmp: 30, swaySpeed: 0.25, swayPhase: 0, pushX: 0, pushY: 0, popped: false }
-      // no DOM click handler: bubbles sit behind the UI, so we hit-test the cursor
-      // against each bubble in the animation loop and pop on hover-over.
+      const b: Bubble = { el, r: 20, x: 0, y: 0, rise: 15, swayAmp: 40, swaySpeed: 0.2, swayPhase: 0, popT: 0, popped: false }
       host.appendChild(el)
       reset(b, false)
       return b
-    }
-
-    function pop(b: Bubble) {
-      if (b.popped) return
-      b.popped = true
-      b.el.classList.add('popping')
-      setTimeout(() => {
-        b.el.classList.remove('popping')
-        reset(b, true)
-      }, 900 + Math.random() * 1400)
     }
 
     for (let i = 0; i < count; i++) bubbles.push(makeBubble())
@@ -69,31 +72,41 @@ export function Bubbles({ count = 14 }: { count?: number }) {
     window.addEventListener('pointermove', onMove, { passive: true })
 
     let raf = 0
-    let last = performance.now()
+    let lastT = performance.now()
     const tick = (now: number) => {
-      const dt = Math.min(0.05, (now - last) / 1000)   // seconds, clamped
-      last = now
-      const W = window.innerWidth
+      const dt = Math.min(0.05, (now - lastT) / 1000)
+      lastT = now
       for (const b of bubbles) {
         if (b.popped) continue
-        // steady rise + smooth sinusoidal sway (the "wind")
+
+        if (b.popT > 0) {
+          // popping: scale up + fade, all via transform (smooth), then respawn
+          b.popT += dt / 0.32
+          const sway = b.swayAmp * Math.sin(now * 0.001 * b.swaySpeed + b.swayPhase)
+          const scale = 1 + 0.55 * Math.min(1, b.popT)
+          b.el.style.transform = `translate3d(${b.x + sway - b.r}px, ${b.y - b.r}px, 0) scale(${scale})`
+          b.el.style.opacity = String(Math.max(0, 1 - b.popT))
+          if (b.popT >= 1) {
+            b.popped = true
+            setTimeout(() => reset(b, true), 900 + Math.random() * 1400)
+          }
+          continue
+        }
+
+        // rise + smooth sinusoidal sway (the wind)
         b.y -= b.rise * dt
-        const swayX = b.swayAmp * Math.sin(now * 0.001 * b.swaySpeed + b.swayPhase)
-        const cx = b.x + swayX
+        const sway = b.swayAmp * Math.sin(now * 0.001 * b.swaySpeed + b.swayPhase)
+        const cx = b.x + sway
         const cy = b.y
 
-        // pop when the cursor passes OVER the bubble - a manual hit-test against
-        // the mouse position, so it works even though the bubble sits behind the UI
+        // pop when the cursor is over the bubble (manual hit-test, works behind the UI)
         const dx = cx - mouse.x, dy = cy - mouse.y
-        if (dx * dx + dy * dy < b.r * b.r) { pop(b); continue }
+        if (dx * dx + dy * dy < b.r * b.r) { b.popT = 0.0001; continue }
 
-        if (b.y < -b.r * 2 - 20) reset(b, true)     // recycle at the top
+        if (b.y < -b.r * 2 - 20) reset(b, true)
 
-        // position via left/top so the pop keyframe's transform:scale runs in place
-        b.el.style.left = `${cx - b.r}px`
-        b.el.style.top = `${cy - b.r}px`
-        if (b.x < -60) b.x = W + 60
-        else if (b.x > W + 60) b.x = -60
+        // subpixel, GPU-composited position -> no pixel-step jitter
+        b.el.style.transform = `translate3d(${cx - b.r}px, ${cy - b.r}px, 0)`
       }
       raf = requestAnimationFrame(tick)
     }
@@ -104,7 +117,7 @@ export function Bubbles({ count = 14 }: { count?: number }) {
       window.removeEventListener('pointermove', onMove)
       host.innerHTML = ''
     }
-  }, [count])
+  }, [count, avatars])
 
   return <div ref={holder} className="aero-bubble-field" aria-hidden />
 }

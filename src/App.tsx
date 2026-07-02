@@ -868,7 +868,7 @@ function App() {
               {activeTab === 'prioritize' && (
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <div className="font-medium">Prioritize — pick your fight <span className="text-[11px] text-aero-muted font-normal">(claims-locked functions hidden)</span></div>
+                    <div className="font-medium">Prioritize <span className="text-[11px] text-aero-muted font-normal">(claims-locked functions hidden)</span></div>
                     <div className="flex gap-1">
                       {([
                         ['nearly', 'Nearly done'],
@@ -914,7 +914,7 @@ function App() {
 
               {activeTab === 'prompt' && (
                 <div>
-                  <div className="font-medium mb-2">Prompt Builder — paste into Claude Code (or any assistant) and go</div>
+                  <div className="font-medium mb-2">Prompt Builder: paste into Claude Code (or any assistant) and go</div>
 
                   {batch.length > 0 && (
                     <div className="mb-3 flex flex-wrap items-center gap-1.5">
@@ -939,7 +939,7 @@ function App() {
                       {batch.length === 0 && selectedFn && (
                         <div className="text-sm flex items-center gap-2 flex-wrap">
                           Target: <span className="font-mono text-aero-primary">{selectedFn.name}</span>
-                          <span className="text-aero-muted">({selectedFn.module} @ 0x{selectedFn.addr.toString(16)} — {selectedFn.size.toLocaleString()} B)</span>
+                          <span className="text-aero-muted">({selectedFn.module} @ 0x{selectedFn.addr.toString(16)}, {selectedFn.size.toLocaleString()} B)</span>
                           <StatusBadge fn={selectedFn} lockedBy={lockedBy.get(selectedFn.id)} />
                           <button onClick={() => toggleBatch(selectedFn.id)} className="aero-button px-2 py-0.5 text-[11px] inline-flex items-center gap-1"><Plus className="w-3 h-3" /> add to batch</button>
                         </div>
@@ -1031,7 +1031,7 @@ function App() {
 
                       {detail.draft && (
                         <div className="glass p-3 rounded-lg">
-                          <div className="text-[11px] uppercase tracking-wide text-amber-800 mb-1">Near-miss draft — {detail.draftDiv} instruction(s) from matching</div>
+                          <div className="text-[11px] uppercase tracking-wide text-amber-800 mb-1">Near-miss draft: {detail.draftDiv} instruction(s) from matching</div>
                           <pre className="text-[10.5px] mono overflow-auto max-h-[200px] whitespace-pre-wrap leading-snug">{detail.draft}</pre>
                         </div>
                       )}

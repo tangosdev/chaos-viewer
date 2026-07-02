@@ -187,30 +187,31 @@ export function Treemap({ functions, selectedId, selectedPath, lockedIds, onSele
                 y={r.y}
                 width={r.w}
                 height={r.h}
-                fill={fill}
-                stroke={stroke}
                 strokeWidth={sw}
                 rx={r.isModuleLabel ? 4 : 1}
                 filter={isLocked ? 'url(#tm-glow)' : undefined}
                 onClick={() => { if (!r.isModuleLabel) onSelect(r.id) }}
                 className={r.isModuleLabel ? '' : 'cursor-pointer'}
-                style={{ transition: 'fill 120ms, stroke 120ms' }}
+                // fill/stroke go through CSS (style), not SVG presentation attrs:
+                // iOS Safari does not resolve var() inside a fill="" attribute, which
+                // left matched rects unfilled on mobile. CSS fill resolves var() fine.
+                style={{ fill, stroke, transition: 'fill 120ms, stroke 120ms' }}
               />
               {r.isModuleLabel && r.moduleLabel && r.h > LABEL_H + 4 && r.w > 36 && (
                 <text
                   x={r.x + 5}
                   y={r.y + 13}
                   fontSize={10.5}
-                  fill="var(--aero-text)"
                   fontFamily="'Segoe UI', system-ui, sans-serif"
                   fontWeight={600}
                   pointerEvents="none"
+                  style={{ fill: 'var(--aero-text)' }}
                 >
                   {r.moduleLabel}
                 </text>
               )}
               {!r.isModuleLabel && (r.h > 9 && r.w > 18) && (
-                <title>{r.name} — {isLocked ? 'being worked on' : r.matched ? 'matched' : 'unmatched'}</title>
+                <title>{r.name}: {isLocked ? 'being worked on' : r.matched ? 'matched' : 'unmatched'}</title>
               )}
             </g>
           )

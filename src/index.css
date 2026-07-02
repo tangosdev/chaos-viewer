@@ -19,6 +19,7 @@
   --aero-glass: rgba(255, 255, 255, 0.45);
   --tm-matched-hi: #71dd8a; --tm-matched-lo: #2fae4e;
   --tm-unmatched-hi: #c3d4e3; --tm-unmatched-lo: #9fb4c8;
+  --tm-matched-flat: #86e39c; --tm-unmatched-flat: #cddcea;
   --body-bg:
     radial-gradient(ellipse 900px 420px at 78% -8%, rgba(255,255,255,0.85), transparent 60%),
     radial-gradient(ellipse 700px 300px at 15% 4%, rgba(255,255,255,0.5), transparent 65%),
@@ -36,6 +37,7 @@ html[data-theme='sunset'] {
   --aero-unmatched-rgb: 222 189 189;  --aero-unmatched: #debdbd;
   --tm-matched-hi: #6fdba0; --tm-matched-lo: #2e9c64;
   --tm-unmatched-hi: #ecd3d3; --tm-unmatched-lo: #d0a9ae;
+  --tm-matched-flat: #7fe0ad; --tm-unmatched-flat: #ecd9d9;
   --body-bg:
     radial-gradient(ellipse 800px 380px at 75% -5%, rgba(255,240,200,0.9), transparent 60%),
     linear-gradient(180deg, #ffd9a0 0%, #ffab7b 40%, #f3808f 72%, #a86bc9 100%);
@@ -54,6 +56,7 @@ html[data-theme='deepsea'] {
   --aero-glass: rgba(20, 50, 72, 0.5);
   --tm-matched-hi: #45f2a1; --tm-matched-lo: #17a866;
   --tm-unmatched-hi: #4a6a84; --tm-unmatched-lo: #32485c;
+  --tm-matched-flat: #3fe89a; --tm-unmatched-flat: #43607a;
   --body-bg:
     radial-gradient(ellipse 900px 400px at 70% -10%, rgba(60,160,220,0.35), transparent 60%),
     linear-gradient(180deg, #0b3350 0%, #082a40 45%, #06202f 100%);
@@ -70,6 +73,7 @@ html[data-theme='bubblegum'] {
   --aero-unmatched-rgb: 226 197 219;  --aero-unmatched: #e2c5db;
   --tm-matched-hi: #6fe3a5; --tm-matched-lo: #27a361;
   --tm-unmatched-hi: #f0d8ea; --tm-unmatched-lo: #d3aecb;
+  --tm-matched-flat: #7fe6ad; --tm-unmatched-flat: #ecd5e7;
   --body-bg:
     radial-gradient(ellipse 800px 380px at 20% -5%, rgba(255,255,255,0.8), transparent 60%),
     linear-gradient(180deg, #ffd6ec 0%, #ffaed9 45%, #c3b1f7 100%);
@@ -85,6 +89,7 @@ html[data-theme='mint'] {
   --aero-unmatched-rgb: 186 211 202;  --aero-unmatched: #bad3ca;
   --tm-matched-hi: #4ade9d; --tm-matched-lo: #0d9668;
   --tm-unmatched-hi: #d7ece3; --tm-unmatched-lo: #a9c8bc;
+  --tm-matched-flat: #5fd898; --tm-unmatched-flat: #d0e5dc;
   --body-bg:
     radial-gradient(ellipse 900px 400px at 80% -8%, rgba(255,255,255,0.95), transparent 60%),
     linear-gradient(180deg, #eafff6 0%, #bdeeda 55%, #8fd9c2 100%);

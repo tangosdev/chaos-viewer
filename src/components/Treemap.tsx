@@ -170,7 +170,7 @@ export function Treemap({ functions, selectedId, selectedPath, lockedIds, onSele
           const isLocked = !r.isModuleLabel && lockedIds?.has(r.id)
           const isDim = selectedPath ? !r.id.startsWith(`mod:${selectedPath}`) && !r.id.includes(selectedPath) : false
 
-          let fill = r.matched ? 'url(#tm-matched)' : 'url(#tm-unmatched)'
+          let fill = r.matched ? 'var(--tm-matched-flat)' : 'var(--tm-unmatched-flat)'
           if (isLocked) fill = 'url(#tm-locked)'
           if (r.isModuleLabel) fill = 'rgb(var(--aero-gloss-rgb) / 0.28)'
           if (isDim && !isLocked) fill = r.isModuleLabel ? 'rgb(var(--aero-gloss-rgb) / 0.12)' : 'rgb(var(--aero-unmatched-rgb) / 0.4)'

@@ -502,10 +502,25 @@ function App() {
             <div className="flex items-center gap-3">
               <PopLogo />
               <div>
-                <div className="text-3xl font-semibold tracking-[-1.5px]">{P.title ?? 'Chaos Viewer'}</div>
+                <div className="text-3xl font-semibold tracking-[-1.5px]">Chaos Viewer</div>
                 <div className="text-aero-muted text-sm -mt-1">Bring order to the chaos</div>
               </div>
             </div>
+            {P.github ? (
+              <a href={P.github} target="_blank" rel="noreferrer"
+                 className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-medium rounded-full pl-2 pr-3 py-1"
+                 style={{ background: 'rgb(var(--aero-primary-rgb) / 0.14)', border: '1px solid rgb(var(--aero-primary-rgb) / 0.35)', color: 'var(--aero-primary)' }}
+                 title="this atlas is generated for a specific repository">
+                <span className="uppercase tracking-wide opacity-70 text-[10px]">Project</span>
+                <span className="mono">{P.name}</span>
+              </a>
+            ) : (
+              <button onClick={() => setSetupOpen(true)}
+                 className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-medium rounded-full px-3 py-1"
+                 style={{ background: 'rgb(var(--aero-primary-rgb) / 0.14)', border: '1px dashed rgb(var(--aero-primary-rgb) / 0.5)', color: 'var(--aero-primary)' }}>
+                + link a GitHub repo to begin
+              </button>
+            )}
           </div>
 
           <div className="text-right">

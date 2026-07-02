@@ -78,8 +78,9 @@ const LINK_REPO = _param('repo') ? decodeURIComponent(_param('repo')!) : null
 const LINK_DISCORD = _param('discord') ? decodeURIComponent(_param('discord')!) : null
 // URL to a project's published chaos-db.json (its own generated data). This is what
 // makes the hosted viewer work for ANY project: point it at that project's data file.
-const DATA_URL = _param('data') ? decodeURIComponent(_param('data')!) : null
-const HAS_LINK = !!(LINK_REPO || DATA_URL)
+const DATA_URL_INIT = _param('data') ? decodeURIComponent(_param('data')!)
+  : (() => { try { return JSON.parse(localStorage.getItem('chaos-project') || '{}').dataUrl || null } catch { return null } })()
+const HAS_LINK = !!(LINK_REPO || DATA_URL_INIT)
 
 const urlProject: Partial<ProjectConfig> = {}
 if (LINK_REPO) { urlProject.github = LINK_REPO; urlProject.name = _repoName(LINK_REPO) }
@@ -94,18 +95,44 @@ const savedProject: Partial<ProjectConfig> | null = (() => {
 
 // P starts from the bundled data's project; the runtime data load can refine it.
 let P: ProjectConfig = { ...(BUNDLED.project ?? {}), ...(savedProject ?? {}), ...urlProject } as ProjectConfig
-const NEEDS_SETUP = !P.github && !DATA_URL
+const HAS_BUNDLED_DATA = (BUNDLED.functions?.length ?? 0) > 0
 // details chunks live next to the data file
-let DETAILS_BASE = DATA_URL ? DATA_URL.replace(/[^/]*$/, '') + 'details/' : `${import.meta.env.BASE_URL}details/`
+let DETAILS_BASE = DATA_URL_INIT ? DATA_URL_INIT.replace(/[^/]*$/, '') + 'details/' : `${import.meta.env.BASE_URL}details/`
 const BATCH_MAX = 16
 
 function shareLink() {
   const base = window.location.origin + window.location.pathname
   const q = new URLSearchParams()
-  if (DATA_URL) q.set('data', DATA_URL)
+  if (DATA_URL_INIT) q.set('data', DATA_URL_INIT)
   if (P.github) q.set('repo', P.github)
-  if (P.discord && !DATA_URL) q.set('discord', P.discord)
+  if (P.discord && !DATA_URL_INIT) q.set('discord', P.discord)
   return `${base}?${q.toString()}`
+}
+
+// Probe a repo for a published Chaos Viewer data file. CORS-friendly raw.* URLs
+// first, then GitHub Pages. Returns the working URL or null.
+async function discoverData(github: string): Promise<string | null> {
+  const m = github.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/)
+  if (!m) return null
+  const [, owner, name] = m
+  const cands = [
+    `https://raw.githubusercontent.com/${owner}/${name}/main/data/chaos-db.json`,
+    `https://raw.githubusercontent.com/${owner}/${name}/main/chaos-db.json`,
+    `https://raw.githubusercontent.com/${owner}/${name}/master/data/chaos-db.json`,
+    `https://raw.githubusercontent.com/${owner}/${name}/master/chaos-db.json`,
+    `https://raw.githubusercontent.com/${owner}/${name}/main/docs/chaos-db.json`,
+    `https://${owner}.github.io/${name}/data/chaos-db.json`,
+    `https://${owner}.github.io/${name}/chaos-db.json`,
+  ]
+  for (const url of cands) {
+    try {
+      const r = await fetch(url)
+      if (!r.ok) continue
+      const j = await r.json()
+      if (j && j.stats && Array.isArray(j.functions)) return url
+    } catch { /* try next */ }
+  }
+  return null
 }
 const AUTHOR = 'Brennen (Tango)'
 const AUTHOR_URL = 'https://github.com/bmanus2-dotcom'
@@ -335,23 +362,35 @@ function PopLogo() {
   )
 }
 
-function SetupModal({ open, onClose, contrib, setContrib }: { open: boolean; onClose: () => void; contrib: boolean; setContrib: (v: boolean) => void }) {
+function SetupModal({ open, onClose, contrib, setContrib, canDismiss }: { open: boolean; onClose: () => void; contrib: boolean; setContrib: (v: boolean) => void; canDismiss: boolean }) {
   const [url, setUrl] = useState(P.github ?? '')
   const [advanced, setAdvanced] = useState('')
   const [err, setErr] = useState('')
+  const [checking, setChecking] = useState(false)
   if (!open) return null
-  function save() {
+  async function save() {
     const gh = url.trim().replace(/\/+$/, '')
     if (!/^https:\/\/github\.com\/[^/]+\/[^/]+$/.test(gh)) {
       setErr('Enter a repo link like https://github.com/you/your-decomp')
       return
     }
-    let extra: Partial<ProjectConfig> = {}
+    let extra: Partial<ProjectConfig> & { dataUrl?: string } = {}
     if (advanced.trim()) {
       try { extra = JSON.parse(advanced) } catch { setErr('Advanced config is not valid JSON'); return }
     }
-    const name = gh.split('/').slice(-1)[0]
-    localStorage.setItem('chaos-project', JSON.stringify({ name, github: gh, ...extra }))
+    setErr(''); setChecking(true)
+    // an explicit dataUrl in advanced config is trusted; otherwise find it in the repo
+    let dataUrl = extra.dataUrl
+    if (!dataUrl) dataUrl = (await discoverData(gh)) || undefined
+    if (!dataUrl) {
+      setChecking(false)
+      setErr("No Chaos Viewer data found in this repo. The project owner must generate chaos-db.json "
+        + "(see ADAPTING.md) and commit it to the repo (e.g. data/chaos-db.json on the default branch) "
+        + "or publish it, then it will load here.")
+      return
+    }
+    const name = extra.name || gh.split('/').slice(-1)[0]
+    localStorage.setItem('chaos-project', JSON.stringify({ name, github: gh, ...extra, dataUrl }))
     location.reload()
   }
   return (
@@ -399,8 +438,8 @@ function SetupModal({ open, onClose, contrib, setContrib }: { open: boolean; onC
                   className="px-3 py-1 text-sm text-aero-muted hover:text-rose-600 mr-auto" title="forget the saved repo and use this build's bundled project">
             Reset
           </button>
-          {P.github && <button onClick={onClose} className="px-3 py-1 text-sm text-aero-muted hover:text-aero-text">cancel</button>}
-          <button onClick={save} className="aero-button px-4 py-1.5 text-sm">Save</button>
+          {canDismiss && <button onClick={onClose} className="px-3 py-1 text-sm text-aero-muted hover:text-aero-text">cancel</button>}
+          <button onClick={save} disabled={checking} className="aero-button px-4 py-1.5 text-sm disabled:opacity-60">{checking ? 'Checking repo for data…' : 'Save'}</button>
         </div>
       </div>
     </div>
@@ -412,18 +451,37 @@ type SortMode = 'name' | 'pctAsc' | 'pctDesc' | 'count' | 'bytes'
 
 function App() {
   const [db, setDb] = useState<ChaosDb>(BUNDLED)
-  const [dataLoading, setDataLoading] = useState(!!DATA_URL)
+  const [dataUrl, setDataUrl] = useState<string | null>(DATA_URL_INIT)
+  const [dataLoading, setDataLoading] = useState(!!DATA_URL_INIT)
+  const [dataError, setDataError] = useState(false)
+  // (hasUsableData defined below)
+  // load the project's own data file when we have one
   useEffect(() => {
-    if (!DATA_URL) return
+    if (!dataUrl) return
+    DETAILS_BASE = dataUrl.replace(/[^/]*$/, '') + 'details/'
+    detailCache.clear()
     let cancelled = false
-    fetch(DATA_URL).then(r => r.ok ? r.json() : Promise.reject(r.status)).then((j: ChaosDb) => {
+    setDataLoading(true); setDataError(false)
+    fetch(dataUrl).then(r => r.ok ? r.json() : Promise.reject(r.status)).then((j: ChaosDb) => {
       if (cancelled) return
       if (j.project) P = { ...j.project, ...urlProject }   // URL repo/discord still win
-      setDb(j)
-      setDataLoading(false)
-    }).catch(() => { if (!cancelled) setDataLoading(false) })
+      setDb(j); setDataLoading(false)
+    }).catch(() => { if (!cancelled) { setDataLoading(false); setDataError(true) } })
+    return () => { cancelled = true }
+  }, [dataUrl])
+  // a repo-only link (?repo=) with no bundled data: try to discover its data file
+  useEffect(() => {
+    if (dataUrl || HAS_BUNDLED_DATA || !P.github) return
+    let cancelled = false
+    setDataLoading(true)
+    discoverData(P.github).then(found => {
+      if (cancelled) return
+      if (found) setDataUrl(found)
+      else { setDataLoading(false); setSetupOpen(true) }
+    })
     return () => { cancelled = true }
   }, [])
+  const hasUsableData = HAS_BUNDLED_DATA || (!!dataUrl && !dataError && !dataLoading)
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -442,7 +500,7 @@ function App() {
   const [batchPrompt, setBatchPrompt] = useState<string | null>(null)
   const [claims, setClaims] = useState<Claim[]>([])
   const [claimsStatus, setClaimsStatus] = useState<'loading' | 'live' | 'unavailable'>('loading')
-  const [setupOpen, setSetupOpen] = useState(NEEDS_SETUP)
+  const [setupOpen, setSetupOpen] = useState(!HAS_BUNDLED_DATA && !DATA_URL_INIT && !LINK_REPO)
 
   const stats = db.stats
   const fnPct = formatPct(stats.matchedFunctions, stats.totalFunctions)
@@ -614,14 +672,14 @@ function App() {
   return (
     <div className="min-h-screen text-[15px] text-aero-text">
       <Bubbles avatars={avatars} />
-      {!dataLoading && !DATA_URL && P.github && db.project?.name && _repoName(P.github) !== db.project.name && (
+      {!dataLoading && !dataUrl && P.github && db.project?.name && _repoName(P.github) !== db.project.name && (
         <div className="fixed top-0 inset-x-0 z-40 pointer-events-auto text-center text-[12px] py-1.5 px-4"
              style={{ background: 'rgb(240 160 40 / 0.95)', color: '#3a2600' }}>
           Linked to <b>{P.name}</b>, but the data shown is <b>{db.project.name}</b>. To view {P.name}&apos;s
           functions, generate its data (see ADAPTING.md) and open this page with <code>?data=&lt;url-to-chaos-db.json&gt;</code>.
         </div>
       )}
-      <SetupModal open={setupOpen} onClose={() => setSetupOpen(false)} contrib={contribBubbles} setContrib={setContribBubbles} />
+      <SetupModal open={setupOpen || !hasUsableData} onClose={() => setSetupOpen(false)} contrib={contribBubbles} setContrib={setContribBubbles} canDismiss={hasUsableData} />
 
       <div className="relative z-10 w-full max-w-[1900px] mx-auto px-4 sm:px-6 xl:px-10 py-6 xl:py-8 select-none">
         <header className="mb-6 flex items-end justify-between select-none">

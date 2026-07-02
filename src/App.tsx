@@ -117,7 +117,7 @@ function App() {
                       <span className="font-medium">{mod}</span>
                       <span className="text-[11px] tabular-nums text-aero-muted">{matchedInMod}/{modFns.length}</span>
                     </button>
-                    {(!selectedPath || selectedPath === mod) && modFns.slice(0, 8).map(fn => (
+                    {(!selectedPath || selectedPath === mod) && modFns.map(fn => (
                       <button
                         key={fn.id}
                         onClick={() => selectFunction(fn.id)}
@@ -128,7 +128,6 @@ function App() {
                         {fn.name}
                       </button>
                     ))}
-                    {modFns.length > 8 && <div className="pl-6 text-[10px] text-aero-muted/60">+{modFns.length - 8} more</div>}
                   </div>
                 )
               })}

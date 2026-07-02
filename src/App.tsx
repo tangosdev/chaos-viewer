@@ -873,8 +873,28 @@ function App() {
           </div>
         </div>
 
-        <footer className="mt-8 text-[10px] text-aero-muted/50 text-center">
-          Chaos Viewer • data from sm64ds-decomp tools (modules/sweep/ledger/coddog/nearmiss) + live claims • inspired by Mizuchi Decomp Atlas
+        <footer className="mt-10 pointer-events-auto text-center space-y-2 pb-4">
+          <div className="flex items-center justify-center gap-4 text-[12px]">
+            {P.github && (
+              <a href={P.github} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-aero-primary hover:underline">
+                <FileCode className="w-3.5 h-3.5" /> {P.name} on GitHub
+              </a>
+            )}
+            {P.discord && (
+              <a href={P.discord} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:underline" style={{ color: '#5865F2' }}>
+                <MessageCircle className="w-3.5 h-3.5" /> Discord
+              </a>
+            )}
+            <a href="https://github.com/macabeus/mizuchi" target="_blank" rel="noreferrer" className="text-aero-muted hover:text-aero-text hover:underline">
+              inspired by Mizuchi Atlas
+            </a>
+          </div>
+          <div className="text-[10px] text-aero-muted/70 leading-relaxed max-w-[680px] mx-auto">
+            Chaos Viewer &copy; {new Date().getFullYear()} Brennen (Tango). Released under the MIT License.
+            Progress data generated from the {P.name || 'project'} tooling; no copyrighted ROM or extracted
+            assets are included or distributed. All trademarks and game assets belong to their respective owners
+            and are not affiliated with or endorsed by this project.
+          </div>
         </footer>
       </div>
     </div>

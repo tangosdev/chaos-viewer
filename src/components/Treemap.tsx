@@ -74,6 +74,38 @@ export function Treemap({ functions, selectedId, selectedPath, lockedIds, onSele
     window.addEventListener('pointerup', up)
   }
 
+  // Resolve theme colors to concrete literals in JS and feed the rects literal
+  // fills, instead of var(--x) in the SVG. iOS Safari does not reliably resolve
+  // CSS custom properties inside SVG fill/stroke (attribute OR style), which left
+  // matched rects unfilled on mobile; literal colors render everywhere. Re-read
+  // when the theme (html[data-theme]) changes.
+  const [themeV, setThemeV] = useState(0)
+  useLayoutEffect(() => {
+    const mo = new MutationObserver(() => setThemeV(v => v + 1))
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => mo.disconnect()
+  }, [])
+  const C = useMemo(() => {
+    const cs = getComputedStyle(document.documentElement)
+    const g = (n: string, fb: string) => cs.getPropertyValue(n).trim() || fb
+    const triplet = (n: string, fb: string, a: number) => {
+      const [r, gg, b] = g(n, fb).split(/[\s,]+/)
+      return `rgba(${r}, ${gg}, ${b}, ${a})`
+    }
+    return {
+      matchedFlat: g('--tm-matched-flat', '#86e39c'),
+      unmatchedFlat: g('--tm-unmatched-flat', '#cddcea'),
+      matchedLo: g('--tm-matched-lo', '#2fae4e'),
+      unmatchedLo: g('--tm-unmatched-lo', '#9fb4c8'),
+      border: g('--aero-border', 'rgba(0,0,0,0.1)'),
+      primary: g('--aero-primary', '#2f9be4'),
+      text: g('--aero-text', '#0b2a3a'),
+      glossLabel: triplet('--aero-gloss-rgb', '255 255 255', 0.28),
+      glossDim: triplet('--aero-gloss-rgb', '255 255 255', 0.12),
+      unmatchedDim: triplet('--aero-unmatched-rgb', '205 220 234', 0.4),
+    }
+  }, [themeV])
+
   const rects = useMemo(() => {
     const byMod = new Map<string, TreemapFunc[]>()
     for (const f of functions) {
@@ -170,14 +202,14 @@ export function Treemap({ functions, selectedId, selectedPath, lockedIds, onSele
           const isLocked = !r.isModuleLabel && lockedIds?.has(r.id)
           const isDim = selectedPath ? !r.id.startsWith(`mod:${selectedPath}`) && !r.id.includes(selectedPath) : false
 
-          let fill = r.matched ? 'var(--tm-matched-flat)' : 'var(--tm-unmatched-flat)'
+          let fill = r.matched ? C.matchedFlat : C.unmatchedFlat
           if (isLocked) fill = 'url(#tm-locked)'
-          if (r.isModuleLabel) fill = 'rgb(var(--aero-gloss-rgb) / 0.28)'
-          if (isDim && !isLocked) fill = r.isModuleLabel ? 'rgb(var(--aero-gloss-rgb) / 0.12)' : 'rgb(var(--aero-unmatched-rgb) / 0.4)'
+          if (r.isModuleLabel) fill = C.glossLabel
+          if (isDim && !isLocked) fill = r.isModuleLabel ? C.glossDim : C.unmatchedDim
 
-          const stroke = isSel ? 'var(--aero-primary)'
+          const stroke = isSel ? C.primary
             : isLocked ? '#f59e0b'
-            : (r.isModuleLabel ? 'var(--aero-border)' : (r.matched ? 'var(--tm-matched-lo)' : 'var(--tm-unmatched-lo)'))
+            : (r.isModuleLabel ? C.border : (r.matched ? C.matchedLo : C.unmatchedLo))
           const sw = isSel ? 2.5 : (isLocked ? 1.2 : (r.isModuleLabel ? 1 : 0.5))
 
           return (
@@ -205,7 +237,7 @@ export function Treemap({ functions, selectedId, selectedPath, lockedIds, onSele
                   fontFamily="'Segoe UI', system-ui, sans-serif"
                   fontWeight={600}
                   pointerEvents="none"
-                  style={{ fill: 'var(--aero-text)' }}
+                  style={{ fill: C.text }}
                 >
                   {r.moduleLabel}
                 </text>

@@ -4,17 +4,18 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Frutiger Aero + GitHub avatar-inspired palette (exact hexes finalized after avatar inspection in impl step)
-        'aero-bg': '#7cc4f2',        // frutiger sky
-        'aero-panel': 'rgba(255, 255, 255, 0.62)',
-        'aero-border': 'rgba(255, 255, 255, 0.85)',
-        'aero-primary': '#0099e0',   // aqua cyan
-        'aero-accent': '#7FC400',    // grass lime
-        'aero-gloss': '#ffffff',
-        'aero-text': '#0d3a5c',      // deep sky navy
-        'aero-muted': '#48749c',
-        'aero-matched': '#3fc45f',   // glossy grass green
-        'aero-unmatched': '#a9bfd2', // hazy sky gray
+        // all aero tokens resolve through CSS variables so the theme picker
+        // can swap palettes live (rgb triplets enable /opacity modifiers)
+        'aero-bg': 'rgb(var(--aero-bg-rgb) / <alpha-value>)',
+        'aero-panel': 'var(--aero-panel)',
+        'aero-border': 'var(--aero-border)',
+        'aero-primary': 'rgb(var(--aero-primary-rgb) / <alpha-value>)',
+        'aero-accent': 'rgb(var(--aero-accent-rgb) / <alpha-value>)',
+        'aero-gloss': 'rgb(var(--aero-gloss-rgb) / <alpha-value>)',
+        'aero-text': 'rgb(var(--aero-text-rgb) / <alpha-value>)',
+        'aero-muted': 'rgb(var(--aero-muted-rgb) / <alpha-value>)',
+        'aero-matched': 'rgb(var(--aero-matched-rgb) / <alpha-value>)',
+        'aero-unmatched': 'rgb(var(--aero-unmatched-rgb) / <alpha-value>)',
       },
       backdropBlur: {
         'aero': '20px',

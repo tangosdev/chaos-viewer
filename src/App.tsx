@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Search, BarChart3, Code2, ChevronRight, X, Target, Link2, FileCode, Lock, RefreshCw, Plus, Minus } from 'lucide-react'
+import { Search, BarChart3, Code2, ChevronRight, X, Target, Link2, FileCode, Lock, RefreshCw, Plus, Minus, Palette, Settings } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Treemap } from './components/Treemap'
+import { Bubbles } from './components/Bubbles'
 import './App.css'
 
 interface ChaosFunction {
@@ -67,12 +68,13 @@ interface ChaosDb {
 import chaosDb from '../data/chaos-db.json' with { type: 'json' }
 
 const DB: ChaosDb = chaosDb as ChaosDb
-// project config comes from the generator (project.config.json); the defaults
-// below keep an un-configured build working against sm64ds-decomp
-const P: ProjectConfig = DB.project ?? {
-  name: 'sm64ds-decomp',
-  github: 'https://github.com/bmanus2-dotcom/sm64ds-decomp',
-}
+// project identity: generator-embedded config, overridden by anything the user
+// saved locally through the setup dialog. No hardcoded project.
+const savedProject: Partial<ProjectConfig> | null = (() => {
+  try { return JSON.parse(localStorage.getItem('chaos-project') || 'null') } catch { return null }
+})()
+const P: ProjectConfig = { ...(DB.project ?? {}), ...(savedProject ?? {}) } as ProjectConfig
+const NEEDS_SETUP = !P.github
 const BATCH_MAX = 16
 
 function fillTemplate(t: string, fn: ChaosFunction) {
@@ -200,6 +202,129 @@ function Pill({ name, onClick }: { name: string; onClick?: () => void }) {
   )
 }
 
+
+const THEMES: { id: string; label: string; swatch: string }[] = [
+  { id: 'aero', label: 'Frutiger Aero', swatch: 'linear-gradient(135deg,#7cc4f2,#8ec841)' },
+  { id: 'sunset', label: 'Sunset', swatch: 'linear-gradient(135deg,#ffd9a0,#a86bc9)' },
+  { id: 'deepsea', label: 'Deep Sea', swatch: 'linear-gradient(135deg,#0b3350,#24d3ee)' },
+  { id: 'bubblegum', label: 'Bubblegum', swatch: 'linear-gradient(135deg,#ffd6ec,#c3b1f7)' },
+  { id: 'mint', label: 'Mint', swatch: 'linear-gradient(135deg,#eafff6,#8fd9c2)' },
+]
+
+function ThemePicker() {
+  const [theme, setTheme] = useState(() => localStorage.getItem('chaos-theme') || 'aero')
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem('chaos-theme', theme)
+  }, [theme])
+  return (
+    <span className="inline-flex items-center gap-1.5" title="theme">
+      <Palette className="w-3.5 h-3.5 text-aero-muted" />
+      {THEMES.map(t => (
+        <button
+          key={t.id}
+          onClick={() => setTheme(t.id)}
+          title={t.label}
+          className="w-4 h-4 rounded-full transition-transform hover:scale-125"
+          style={{ background: t.swatch, border: theme === t.id ? '2px solid var(--aero-primary)' : '1px solid rgba(255,255,255,0.9)', boxShadow: '0 1px 4px rgb(0 0 0 / 0.2)' }}
+        />
+      ))}
+    </span>
+  )
+}
+
+function PopLogo() {
+  const [state, setState] = useState<'idle' | 'pop' | 'inflate'>('idle')
+  function popIt() {
+    if (state !== 'idle') return
+    setState('pop')
+    setTimeout(() => setState('inflate'), 330)
+    setTimeout(() => setState('idle'), 900)
+  }
+  return (
+    <button onClick={popIt} className={`w-11 h-11 relative cursor-pointer ${state === 'idle' ? 'logo-bob' : state === 'pop' ? 'logo-pop' : 'logo-inflate'}`} aria-label="pop the bubble" title="pop me">
+      <svg viewBox="0 0 100 100" className="w-11 h-11">
+        <defs>
+          <radialGradient id="lg-bubble" cx="35%" cy="28%" r="75%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
+            <stop offset="35%" stopColor="#e8fbff" stopOpacity="0.55" />
+            <stop offset="80%" stopColor="#bfe9ff" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="#9ed9f7" stopOpacity="0.5" />
+          </radialGradient>
+          <linearGradient id="lg-jelly" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#b8ec6a" />
+            <stop offset="45%" stopColor="#7fd42e" />
+            <stop offset="100%" stopColor="#4fae1f" />
+          </linearGradient>
+        </defs>
+        <circle cx="50" cy="50" r="46" fill="url(#lg-bubble)" stroke="rgba(255,255,255,0.95)" strokeWidth="2.5" />
+        <ellipse cx="34" cy="26" rx="14" ry="8" fill="white" opacity="0.85" transform="rotate(-24 34 26)" />
+        <path d="M34 36 C 32 24, 46 17, 56 21 C 67 25, 70 35, 62 43 C 56 49, 50 48, 49 56 L 49 61"
+              fill="none" stroke="url(#lg-jelly)" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M34 36 C 32 24, 46 17, 56 21 C 67 25, 70 35, 62 43 C 56 49, 50 48, 49 56 L 49 61"
+              fill="none" stroke="#fff9d9" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.65"
+              transform="translate(-1.5,-2)" />
+        <circle cx="49" cy="74" r="7" fill="url(#lg-jelly)" />
+        <circle cx="46.5" cy="71.5" r="2.2" fill="#fff9d9" opacity="0.8" />
+      </svg>
+    </button>
+  )
+}
+
+function SetupModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [url, setUrl] = useState(P.github ?? '')
+  const [advanced, setAdvanced] = useState('')
+  const [err, setErr] = useState('')
+  if (!open) return null
+  function save() {
+    const gh = url.trim().replace(/\/+$/, '')
+    if (!/^https:\/\/github\.com\/[^/]+\/[^/]+$/.test(gh)) {
+      setErr('Enter a repo link like https://github.com/you/your-decomp')
+      return
+    }
+    let extra: Partial<ProjectConfig> = {}
+    if (advanced.trim()) {
+      try { extra = JSON.parse(advanced) } catch { setErr('Advanced config is not valid JSON'); return }
+    }
+    const name = gh.split('/').slice(-1)[0]
+    localStorage.setItem('chaos-project', JSON.stringify({ name, github: gh, ...extra }))
+    location.reload()
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgb(var(--aero-text-rgb) / 0.35)', backdropFilter: 'blur(6px)' }}>
+      <div className="aero-panel p-6 w-[520px] max-w-[92vw] space-y-4">
+        <div className="text-xl font-semibold">Point Chaos Viewer at your decomp</div>
+        <div className="text-sm text-aero-muted">
+          Enter the GitHub repository this atlas is for. Generate the data with your own
+          script per <span className="mono">ADAPTING.md</span> (or the bundled generator for sm64ds-decomp).
+        </div>
+        <input
+          value={url}
+          onChange={e => { setUrl(e.target.value); setErr('') }}
+          placeholder="https://github.com/you/your-decomp"
+          className="w-full glass px-3 py-2 text-sm outline-none placeholder:text-aero-muted/60"
+          autoFocus
+        />
+        <details>
+          <summary className="text-xs text-aero-muted cursor-pointer">Advanced: paste a full project config JSON (compiler, verify command, claims...)</summary>
+          <textarea
+            value={advanced}
+            onChange={e => setAdvanced(e.target.value)}
+            rows={5}
+            placeholder='{"compiler": "...", "verifyCommand": "python tools/verify.py --func {name} ..."}'
+            className="mt-2 w-full glass px-3 py-2 text-[11px] mono outline-none"
+          />
+        </details>
+        {err && <div className="text-xs text-rose-600">{err}</div>}
+        <div className="flex justify-end gap-2">
+          {P.github && <button onClick={onClose} className="px-3 py-1 text-sm text-aero-muted hover:text-aero-text">cancel</button>}
+          <button onClick={save} className="aero-button px-4 py-1.5 text-sm">Save</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 type PriorityMode = 'nearly' | 'scaffolded' | 'biggest'
 type SortMode = 'name' | 'pctAsc' | 'pctDesc' | 'count' | 'bytes'
 
@@ -217,6 +342,7 @@ function App() {
   const [batchPrompt, setBatchPrompt] = useState<string | null>(null)
   const [claims, setClaims] = useState<Claim[]>([])
   const [claimsStatus, setClaimsStatus] = useState<'loading' | 'live' | 'unavailable'>('loading')
+  const [setupOpen, setSetupOpen] = useState(NEEDS_SETUP)
 
   const stats = db.stats
   const fnPct = formatPct(stats.matchedFunctions, stats.totalFunctions)
@@ -367,49 +493,28 @@ function App() {
 
   return (
     <div className="min-h-screen text-[15px] text-aero-text">
-      <div className="aero-bg-orbs" aria-hidden />
+      <Bubbles />
+      <SetupModal open={setupOpen} onClose={() => setSetupOpen(false)} />
 
-      <div className="max-w-[1480px] mx-auto px-6 py-8">
+      <div className="relative z-10 w-full max-w-[1900px] mx-auto px-4 sm:px-6 xl:px-10 py-6 xl:py-8">
         <header className="mb-6 flex items-end justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 relative" aria-label="?">
-                <svg viewBox="0 0 100 100" className="w-11 h-11">
-                  <defs>
-                    <radialGradient id="lg-bubble" cx="35%" cy="28%" r="75%">
-                      <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
-                      <stop offset="35%" stopColor="#e8fbff" stopOpacity="0.55" />
-                      <stop offset="80%" stopColor="#bfe9ff" stopOpacity="0.35" />
-                      <stop offset="100%" stopColor="#9ed9f7" stopOpacity="0.5" />
-                    </radialGradient>
-                    <linearGradient id="lg-jelly" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#b8ec6a" />
-                      <stop offset="45%" stopColor="#7fd42e" />
-                      <stop offset="100%" stopColor="#4fae1f" />
-                    </linearGradient>
-                  </defs>
-                  <circle cx="50" cy="50" r="46" fill="url(#lg-bubble)" stroke="rgba(255,255,255,0.95)" strokeWidth="2.5" />
-                  <ellipse cx="34" cy="26" rx="14" ry="8" fill="white" opacity="0.85" transform="rotate(-24 34 26)" />
-                  <path d="M34 36 C 32 24, 46 17, 56 21 C 67 25, 70 35, 62 43 C 56 49, 50 48, 49 56 L 49 61"
-                        fill="none" stroke="url(#lg-jelly)" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M34 36 C 32 24, 46 17, 56 21 C 67 25, 70 35, 62 43 C 56 49, 50 48, 49 56 L 49 61"
-                        fill="none" stroke="#fff9d9" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.65"
-                        transform="translate(-1.5,-2)" />
-                  <circle cx="49" cy="74" r="7" fill="url(#lg-jelly)" />
-                  <circle cx="46.5" cy="71.5" r="2.2" fill="#fff9d9" opacity="0.8" />
-                </svg>
-              </div>
+              <PopLogo />
               <div>
                 <div className="text-3xl font-semibold tracking-[-1.5px]">{P.title ?? 'Chaos Viewer'}</div>
-                <div className="text-aero-muted text-sm -mt-1">{P.name}</div>
+                <div className="text-aero-muted text-sm -mt-1">Bring order to the chaos</div>
               </div>
             </div>
-            <div className="mt-1 text-[13px] text-aero-muted">{P.tagline ?? 'decomp atlas'}</div>
           </div>
 
           <div className="text-right">
             <div className="font-semibold">{stats.matchedFunctions.toLocaleString()} / {stats.totalFunctions.toLocaleString()} functions <span className="text-aero-primary">({fnPct}%)</span></div>
             <div className="text-sm text-aero-muted">{stats.matchedBytes.toLocaleString()} / {stats.totalBytes.toLocaleString()} bytes <span className="text-aero-primary">({byPct}%)</span> • {modules.length} modules</div>
+            <div className="text-[11px] mt-1 flex items-center gap-2 justify-end">
+              <ThemePicker />
+              <button onClick={() => setSetupOpen(true)} title="project settings" className="text-aero-muted hover:text-aero-primary"><Settings className="w-3.5 h-3.5" /></button>
+            </div>
             {P.claimsApi && (
               <div className="text-[11px] mt-0.5 flex items-center gap-1.5 justify-end">
                 <span className={`inline-block w-1.5 h-1.5 rounded-full ${claimsStatus === 'live' ? 'bg-emerald-400' : claimsStatus === 'loading' ? 'bg-amber-400' : 'bg-rose-400'}`} />
@@ -422,9 +527,9 @@ function App() {
           </div>
         </header>
 
-        <div className="flex gap-4">
+        <div className="flex flex-col lg:flex-row gap-4">
           {/* Sidebar */}
-          <div className="w-72 flex-shrink-0 aero-panel p-3 overflow-hidden flex flex-col" style={{ minHeight: '560px', maxHeight: '80vh' }}>
+          <div className="w-full lg:w-72 xl:w-80 flex-shrink-0 aero-panel p-3 overflow-hidden flex flex-col" style={{ minHeight: '420px', maxHeight: '80vh' }}>
             <div className="px-2 pb-2 flex items-center gap-2 border-b border-white/70 mb-1">
               <Search className="w-4 h-4 text-aero-muted" />
               <input
@@ -518,11 +623,11 @@ function App() {
                     functions={filtered.map(f => ({ id: f.id, module: f.module, name: f.name, size: f.size, matched: f.matched }))}
                     selectedId={selectedId}
                     selectedPath={selectedPath}
+                    lockedIds={new Set(lockedBy.keys())}
                     onSelect={(id) => {
                       if (id === '__clear__') { setSelectedId(null); return }
                       selectFunction(id)
                     }}
-                    height={460}
                   />
                   <div className="mt-2 text-[11px] text-aero-muted">Green = matched (exact bytes). Gray = unmatched. Modules sized by total mass. Same layout math as the README treemap.</div>
                 </div>

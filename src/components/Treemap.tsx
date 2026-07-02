@@ -13,8 +13,8 @@ interface TreemapProps {
   functions: TreemapFunc[]
   selectedId: string | null
   selectedPath: string | null
+  lockedIds?: Set<string>
   onSelect: (id: string) => void
-  height?: number
 }
 
 interface LayoutRect {
@@ -33,11 +33,17 @@ interface LayoutRect {
 const PAD = 3
 const LABEL_H = 18
 const INNER = 2
+const MIN_H = 300
+const MAX_H = 1400
 
-export function Treemap({ functions, selectedId, selectedPath, onSelect, height = 460 }: TreemapProps) {
-  // fill the parent: measure it and lay out in real pixels (no letterboxing)
+export function Treemap({ functions, selectedId, selectedPath, lockedIds, onSelect }: TreemapProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(1080)
+  const [height, setHeight] = useState(() => {
+    const s = Number(localStorage.getItem('chaos-tm-height'))
+    return s >= MIN_H && s <= MAX_H ? s : 460
+  })
+
   useLayoutEffect(() => {
     const el = wrapRef.current
     if (!el) return
@@ -48,6 +54,25 @@ export function Treemap({ functions, selectedId, selectedPath, onSelect, height 
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
+
+  // drag the bottom edge to resize
+  function startResize(e: React.PointerEvent) {
+    e.preventDefault()
+    const startY = e.clientY
+    const startH = height
+    let last = startH
+    const move = (ev: PointerEvent) => {
+      last = Math.max(MIN_H, Math.min(MAX_H, startH + (ev.clientY - startY)))
+      setHeight(last)
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      localStorage.setItem('chaos-tm-height', String(Math.round(last)))
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
 
   const rects = useMemo(() => {
     const byMod = new Map<string, TreemapFunc[]>()
@@ -121,29 +146,39 @@ export function Treemap({ functions, selectedId, selectedPath, onSelect, height 
         width={width}
         height={height}
         className="block rounded-xl"
-        style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.35), rgba(255,255,255,0.15))', border: '1px solid rgba(255,255,255,0.8)' }}
+        style={{ background: 'linear-gradient(180deg, var(--aero-glass), rgb(var(--aero-gloss-rgb) / 0.12))', border: '1px solid var(--aero-border)' }}
       >
         <defs>
           <linearGradient id="tm-matched" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#71dd8a" />
-            <stop offset="45%" stopColor="#3fc45f" />
-            <stop offset="100%" stopColor="#2fae4e" />
+            <stop offset="0%" stopColor="var(--tm-matched-hi)" />
+            <stop offset="100%" stopColor="var(--tm-matched-lo)" />
           </linearGradient>
           <linearGradient id="tm-unmatched" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#c3d4e3" />
-            <stop offset="100%" stopColor="#9fb4c8" />
+            <stop offset="0%" stopColor="var(--tm-unmatched-hi)" />
+            <stop offset="100%" stopColor="var(--tm-unmatched-lo)" />
           </linearGradient>
+          <linearGradient id="tm-locked" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#ffe08a" />
+            <stop offset="100%" stopColor="#f0a92e" />
+          </linearGradient>
+          <filter id="tm-glow" x="-60%" y="-60%" width="220%" height="220%">
+            <feDropShadow dx="0" dy="0" stdDeviation="2.4" floodColor="#ffb52e" floodOpacity="0.95" />
+          </filter>
         </defs>
         {rects.map((r, idx) => {
           const isSel = r.id === selectedId
+          const isLocked = !r.isModuleLabel && lockedIds?.has(r.id)
           const isDim = selectedPath ? !r.id.startsWith(`mod:${selectedPath}`) && !r.id.includes(selectedPath) : false
 
           let fill = r.matched ? 'url(#tm-matched)' : 'url(#tm-unmatched)'
-          if (r.isModuleLabel) fill = 'rgba(255,255,255,0.4)'
-          if (isDim) fill = r.isModuleLabel ? 'rgba(255,255,255,0.2)' : 'rgba(190,205,220,0.45)'
+          if (isLocked) fill = 'url(#tm-locked)'
+          if (r.isModuleLabel) fill = 'rgb(var(--aero-gloss-rgb) / 0.28)'
+          if (isDim && !isLocked) fill = r.isModuleLabel ? 'rgb(var(--aero-gloss-rgb) / 0.12)' : 'rgb(var(--aero-unmatched-rgb) / 0.4)'
 
-          const stroke = isSel ? 'var(--aero-primary)' : (r.isModuleLabel ? 'rgba(255,255,255,0.9)' : (r.matched ? '#2a9b46' : '#8fa6bb'))
-          const sw = isSel ? 2.5 : (r.isModuleLabel ? 1 : 0.5)
+          const stroke = isSel ? 'var(--aero-primary)'
+            : isLocked ? '#f59e0b'
+            : (r.isModuleLabel ? 'var(--aero-border)' : (r.matched ? 'var(--tm-matched-lo)' : 'var(--tm-unmatched-lo)'))
+          const sw = isSel ? 2.5 : (isLocked ? 1.2 : (r.isModuleLabel ? 1 : 0.5))
 
           return (
             <g key={idx}>
@@ -156,6 +191,7 @@ export function Treemap({ functions, selectedId, selectedPath, onSelect, height 
                 stroke={stroke}
                 strokeWidth={sw}
                 rx={r.isModuleLabel ? 4 : 1}
+                filter={isLocked ? 'url(#tm-glow)' : undefined}
                 onClick={() => { if (!r.isModuleLabel) onSelect(r.id) }}
                 className={r.isModuleLabel ? '' : 'cursor-pointer'}
                 style={{ transition: 'fill 120ms, stroke 120ms' }}
@@ -165,7 +201,7 @@ export function Treemap({ functions, selectedId, selectedPath, onSelect, height 
                   x={r.x + 5}
                   y={r.y + 13}
                   fontSize={10.5}
-                  fill="#0d3a5c"
+                  fill="var(--aero-text)"
                   fontFamily="'Segoe UI', system-ui, sans-serif"
                   fontWeight={600}
                   pointerEvents="none"
@@ -174,14 +210,12 @@ export function Treemap({ functions, selectedId, selectedPath, onSelect, height 
                 </text>
               )}
               {!r.isModuleLabel && (r.h > 9 && r.w > 18) && (
-                <title>{r.name} — {r.matched ? 'matched' : 'unmatched'}</title>
+                <title>{r.name} — {isLocked ? 'being worked on' : r.matched ? 'matched' : 'unmatched'}</title>
               )}
             </g>
           )
         })}
       </svg>
-
-
 
       {selectedId && (
         <button
@@ -191,6 +225,15 @@ export function Treemap({ functions, selectedId, selectedPath, onSelect, height 
           clear
         </button>
       )}
+
+      {/* resize handle - drag to make the treemap taller */}
+      <div
+        onPointerDown={startResize}
+        title="drag to resize"
+        className="absolute left-1/2 -translate-x-1/2 -bottom-1 h-3 w-16 flex items-center justify-center cursor-ns-resize group"
+      >
+        <div className="h-1 w-12 rounded-full opacity-40 group-hover:opacity-80 transition" style={{ background: 'var(--aero-primary)' }} />
+      </div>
     </div>
   )
 }

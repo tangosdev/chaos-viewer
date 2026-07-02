@@ -229,3 +229,22 @@ input, textarea, pre, code, .allow-select {
   -webkit-user-select: text;
   user-select: text;
 }
+
+/* copy confirmation floating up like a bubble */
+.copy-float {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgb(255 255 255 / 0.7);
+  animation: copy-float-up 1.4s ease-out forwards;
+}
+@keyframes copy-float-up {
+  0%   { opacity: 0; transform: translate(-50%, 4px) scale(0.85); }
+  20%  { opacity: 1; transform: translate(-50%, -8px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -46px) scale(1.05); }
+}

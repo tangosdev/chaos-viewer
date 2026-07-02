@@ -203,6 +203,18 @@ def main():
     pc = pathlib.Path(args.project_config)
     if pc.exists():
         project = json.loads(pc.read_text(encoding="utf-8"))
+    # auto-pull a Discord invite from the repo docs if the config did not set one
+    if project is not None and not project.get("discord"):
+        import re as _re
+        _pat = _re.compile(r"https?://(?:discord\.gg|discord(?:app)?\.com/invite)/[A-Za-z0-9\-]+")
+        for _name in ("README.md", "CONTRIBUTING.md", "README.rst", "docs/README.md", ".github/README.md"):
+            _f = root / _name
+            if _f.exists():
+                _m = _pat.search(_f.read_text(encoding="utf-8", errors="ignore"))
+                if _m:
+                    project["discord"] = _m.group(0)
+                    print(f"discord link found in {_name}: {_m.group(0)}")
+                    break
     db = {
         "generatedAt": time.strftime("%Y-%m-%d %H:%M"),
         "project": project,

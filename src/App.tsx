@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Search, BarChart3, Code2, ChevronRight, X, Target, Link2, FileCode, Lock, RefreshCw, Plus, Minus, Palette, Settings } from 'lucide-react'
+import { Search, BarChart3, Code2, ChevronRight, X, Target, Link2, FileCode, Lock, RefreshCw, Plus, Minus, Palette, Settings, MessageCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Treemap } from './components/Treemap'
 import { Bubbles } from './components/Bubbles'
@@ -50,6 +50,7 @@ interface ProjectConfig {
   readFirst?: string
   rules?: string
   claimsApi?: string
+  discord?: string
 }
 
 interface ChaosDb {
@@ -77,6 +78,17 @@ const P: ProjectConfig = { ...(DB.project ?? {}), ...(savedProject ?? {}) } as P
 const NEEDS_SETUP = !P.github
 const BATCH_MAX = 16
 
+// EDIT ME: little confirmation phrases shown on the Copy button + floating bubble
+// (one is picked at random each press). Add your own.
+const COPY_PHRASES = [
+  'Prompt Copied!',
+  'Off you go!',
+  'Go get that function!',
+  'Snagged it!',
+  'Copied - good luck!',
+  'Order from chaos!',
+]
+
 function fillTemplate(t: string, fn: ChaosFunction) {
   return t
     .replaceAll('{github}', P.github)
@@ -86,6 +98,19 @@ function fillTemplate(t: string, fn: ChaosFunction) {
     .replaceAll('{addrHex}', fn.addr.toString(16))
     .replaceAll('{size}', String(fn.size))
     .replaceAll('{sizeHex}', fn.size.toString(16))
+}
+
+function legacyCopy(text: string) {
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    document.body.removeChild(ta)
+  } catch { /* nothing more we can do */ }
 }
 
 const detailCache = new Map<string, Record<string, FunctionDetail>>()
@@ -343,6 +368,8 @@ function App() {
   const [sortMode, setSortMode] = useState<SortMode>('name')
   const [detail, setDetail] = useState<FunctionDetail | null>(null)
   const [copied, setCopied] = useState(false)
+  const [copyMsg, setCopyMsg] = useState('')
+  const [copyKey, setCopyKey] = useState(0)
   const [batch, setBatch] = useState<string[]>([])
   const [batchPrompt, setBatchPrompt] = useState<string | null>(null)
   const [claims, setClaims] = useState<Claim[]>([])
@@ -532,6 +559,13 @@ function App() {
             <div className="font-semibold">{stats.matchedFunctions.toLocaleString()} / {stats.totalFunctions.toLocaleString()} functions <span className="text-aero-primary">({fnPct}%)</span></div>
             <div className="text-sm text-aero-muted">{stats.matchedBytes.toLocaleString()} / {stats.totalBytes.toLocaleString()} bytes <span className="text-aero-primary">({byPct}%)</span> • {modules.length} modules</div>
             <div className="text-[11px] mt-1 flex items-center gap-2 justify-end">
+              {P.discord && (
+                <a href={P.discord} target="_blank" rel="noreferrer" title="project Discord"
+                   className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 mr-1"
+                   style={{ background: 'rgb(88 101 242 / 0.16)', border: '1px solid rgb(88 101 242 / 0.4)', color: '#5865F2' }}>
+                  <MessageCircle className="w-3.5 h-3.5" /> Discord
+                </a>
+              )}
               <ThemePicker />
               <button onClick={() => setSetupOpen(true)} title="project settings" className="text-aero-muted hover:text-aero-primary"><Settings className="w-3.5 h-3.5" /></button>
             </div>
@@ -732,18 +766,33 @@ function App() {
                           <button onClick={() => toggleBatch(selectedFn.id)} className="aero-button px-2 py-0.5 text-[11px] inline-flex items-center gap-1"><Plus className="w-3 h-3" /> add to batch</button>
                         </div>
                       )}
-                      <pre className="glass p-3 text-[11px] overflow-auto max-h-[300px] whitespace-pre-wrap mono leading-snug">{promptText}</pre>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(promptText).then(() => {
+                      <pre className={`glass p-3 text-[11px] overflow-auto max-h-[300px] whitespace-pre-wrap mono leading-snug transition-[filter,opacity] duration-300 ${copied ? 'opacity-50 grayscale' : ''}`}>{promptText}</pre>
+                      <div className="relative inline-block">
+                        <button
+                          onClick={() => {
+                            const text = promptText
+                            // copy (clipboard API, with a legacy fallback)
+                            try {
+                              navigator.clipboard?.writeText(text).catch(() => legacyCopy(text))
+                            } catch {
+                              legacyCopy(text)
+                            }
+                            // feedback fires immediately, independent of the clipboard promise
+                            setCopyMsg(COPY_PHRASES[Math.floor(Math.random() * COPY_PHRASES.length)])
+                            setCopyKey(k => k + 1)
                             setCopied(true)
-                            setTimeout(() => setCopied(false), 1600)
-                          })
-                        }}
-                        className="aero-button px-3 py-1 text-sm"
-                      >
-                        {copied ? 'Copied ✓' : `Copy prompt${batch.length ? ` (${batch.length} functions)` : ''}`}
-                      </button>
+                            setTimeout(() => setCopied(false), 1500)
+                          }}
+                          className="aero-button px-3 py-1 text-sm"
+                        >
+                          {copied ? copyMsg : `Copy prompt${batch.length ? ` (${batch.length} functions)` : ''}`}
+                        </button>
+                        {copied && (
+                          <span key={copyKey} className="copy-float" style={{ color: 'var(--aero-primary)' }}>
+                            {copyMsg}
+                          </span>
+                        )}
+                      </div>
                       {batch.length === 0 && selectedFn && !detail && <span className="text-[11px] text-aero-muted ml-2">loading disassembly/draft…</span>}
                     </div>
                   )}

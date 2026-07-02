@@ -20,7 +20,7 @@ Hosted: **https://bmanus2-dotcom.github.io/chaos-viewer/**
 
 ## Use it for your own decomp
 
-You don't host anything — use the hosted viewer above and point it at your project's data.
+You don't host anything. Use the hosted viewer above and point it at your project's data.
 
 1. **Generate your data file.** Use `scripts/generate-chaos-db.py` (the reference generator,
    which reads a decomp's own tooling) or any script that emits the schema in
@@ -33,7 +33,7 @@ You don't host anything — use the hosted viewer above and point it at your pro
    `https://bmanus2-dotcom.github.io/chaos-viewer/?data=<raw-url-to-your-chaos-db.json>`
 
 If a repo has no published data file, the viewer stays on the setup screen and tells you to
-generate one — it won't load someone else's data by mistake.
+generate one, so it won't load someone else's data by mistake.
 
 ## The config file
 

@@ -136,6 +136,10 @@ async function discoverData(github: string): Promise<string | null> {
 }
 const AUTHOR = 'Brennen (Tango)'
 const AUTHOR_URL = 'https://github.com/bmanus2-dotcom'
+// featured example atlases, loaded via ?data= (hosted alongside the app)
+const EXAMPLES: { label: string; data: string }[] = [
+  { label: 'sm64ds-decomp', data: 'examples/sm64ds/chaos-db.json' },
+]
 
 // EDIT ME: little confirmation phrases shown on the Copy button + floating bubble
 // (one is picked at random each press). Add your own.
@@ -408,6 +412,16 @@ function SetupModal({ open, onClose, contrib, setContrib, canDismiss }: { open: 
           className="w-full glass px-3 py-2 text-sm outline-none placeholder:text-aero-muted/60"
           autoFocus
         />
+        {EXAMPLES.length > 0 && (
+          <div className="text-xs text-aero-muted">
+            or explore an example:{' '}
+            {EXAMPLES.map(ex => (
+              <button key={ex.data}
+                onClick={() => { window.location.href = window.location.pathname + '?data=' + encodeURIComponent(ex.data) }}
+                className="text-aero-primary hover:underline mr-2">{ex.label}</button>
+            ))}
+          </div>
+        )}
         <details>
           <summary className="text-xs text-aero-muted cursor-pointer">Advanced: paste a full project config JSON (compiler, verify command, claims...)</summary>
           <textarea

@@ -32,6 +32,9 @@ def main():
     ap.add_argument("--repo", default=None, help="sm64ds-decomp root (default CWD)")
     ap.add_argument("--no-similar", action="store_true",
                     help="skip the coddog similarity pass (fast regen)")
+    ap.add_argument("--project-config", default=str(here / "project.config.json"),
+                    help="project branding/prompt config embedded into the db "
+                         "(see ADAPTING.md; makes the viewer project-agnostic)")
     args = ap.parse_args()
 
     root = pathlib.Path(args.repo) if args.repo else pathlib.Path.cwd()
@@ -196,8 +199,13 @@ def main():
     # ---- write outputs -----------------------------------------------------
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
+    project = None
+    pc = pathlib.Path(args.project_config)
+    if pc.exists():
+        project = json.loads(pc.read_text(encoding="utf-8"))
     db = {
         "generatedAt": time.strftime("%Y-%m-%d %H:%M"),
+        "project": project,
         "stats": {
             "totalFunctions": len(universe),
             "matchedFunctions": matched_n,

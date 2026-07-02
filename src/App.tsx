@@ -37,8 +37,23 @@ interface Claim {
   note?: string
 }
 
+interface ProjectConfig {
+  name: string
+  title?: string
+  tagline?: string
+  github: string
+  compiler?: string
+  cppNote?: string
+  setup?: string
+  verifyCommand?: string
+  readFirst?: string
+  rules?: string
+  claimsApi?: string
+}
+
 interface ChaosDb {
   generatedAt: string
+  project?: ProjectConfig | null
   stats: {
     totalFunctions: number
     matchedFunctions: number
@@ -52,8 +67,24 @@ interface ChaosDb {
 import chaosDb from '../data/chaos-db.json' with { type: 'json' }
 
 const DB: ChaosDb = chaosDb as ChaosDb
-const GITHUB = 'https://github.com/bmanus2-dotcom/sm64ds-decomp'
+// project config comes from the generator (project.config.json); the defaults
+// below keep an un-configured build working against sm64ds-decomp
+const P: ProjectConfig = DB.project ?? {
+  name: 'sm64ds-decomp',
+  github: 'https://github.com/bmanus2-dotcom/sm64ds-decomp',
+}
 const BATCH_MAX = 16
+
+function fillTemplate(t: string, fn: ChaosFunction) {
+  return t
+    .replaceAll('{github}', P.github)
+    .replaceAll('{name}', fn.name)
+    .replaceAll('{module}', fn.module)
+    .replaceAll('{addr}', String(fn.addr))
+    .replaceAll('{addrHex}', fn.addr.toString(16))
+    .replaceAll('{size}', String(fn.size))
+    .replaceAll('{sizeHex}', fn.size.toString(16))
+}
 
 const detailCache = new Map<string, Record<string, FunctionDetail>>()
 
@@ -81,27 +112,24 @@ function toNum(v: string | number): number {
 // ---- prompt building ------------------------------------------------------
 
 function promptHeader(n: number) {
-  return [
-    `Match ${n === 1 ? 'one Super Mario 64 DS function' : `${n} Super Mario 64 DS functions`} to the retail ROM, byte-for-byte, with mwccarm.`,
-    ``,
-    `SETUP (once): clone ${GITHUB} and follow CONTRIBUTING.md`,
-    `(python deps + mwccarm from the DS-decomp Discord + tools/unpack.py on YOUR OWN cartridge dump).`,
-    ``,
-    `COMPILER: mwccarm 1.2/sp2p3. Flags (C): -O4,p -enum int -lang c99 -char signed -interworking -proc arm946e -gccext,on -msgstyle gcc`,
-    `If a name starts with _Z (C++ mangled), write C++ with the FIRST LINE exactly //cpp`,
-    ``,
-    `READ FIRST: notes/mwccarm-codegen.md (esp. sec 6e-6g levers: u64-mask laundering for`,
-    `materialized bases, declaration/statement order for register coloring, //cpp dummy-vtable`,
-    `dispatch, struct-copy interleave) and notes/pret-idioms.md. Coordinate via CLAIMS.md.`,
-  ].join('\n')
+  const lines = [
+    `Match ${n === 1 ? `one ${P.name} function` : `${n} ${P.name} functions`} to the retail binary, byte-for-byte.`,
+  ]
+  if (P.setup) lines.push(``, `SETUP (once): ${P.setup.replaceAll('{github}', P.github)}`)
+  if (P.compiler) lines.push(``, `COMPILER: ${P.compiler}`)
+  if (P.cppNote) lines.push(P.cppNote)
+  if (P.readFirst) lines.push(``, `READ FIRST: ${P.readFirst}`)
+  return lines.join('\n')
 }
 
 function promptSection(fn: ChaosFunction, det: FunctionDetail | null) {
   const lines: string[] = []
   lines.push(`${'='.repeat(70)}`)
   lines.push(`FUNCTION: ${fn.name}   module: ${fn.module}   addr: 0x${fn.addr.toString(16)}   size: ${fn.size} bytes`)
-  lines.push(`VERIFY every attempt (relocation-aware byte compare):`)
-  lines.push(`  python tools/match.py --c yourfile.c --func ${fn.name} --addr 0x${fn.addr.toString(16)} --size 0x${fn.size.toString(16)} --version 1.2/sp2p3`)
+  if (P.verifyCommand) {
+    lines.push(`VERIFY every attempt (relocation-aware byte compare):`)
+    lines.push(`  ${fillTemplate(P.verifyCommand, fn)}`)
+  }
   if (fn.sibling) {
     lines.push(`CLOSEST MATCHED SIBLING (opcode similarity ${fn.sim}): src/${fn.sibling}.c[pp] - use it as your scaffold.`)
   }
@@ -131,13 +159,12 @@ function promptSection(fn: ChaosFunction, det: FunctionDetail | null) {
 }
 
 function promptFooter(n: number) {
-  return [
-    ``,
-    `Rules: only your own legally dumped ROM; never commit the ROM or anything extracted from it;`,
-    `import struct/field knowledge (see CREDITS.md) but write all C from scratch. Matched means`,
-    `byte-identical - iterate until tools/match.py reports a MATCH${n > 1 ? ' for each function, working one at a time (verify before moving on)' : ''}, then open a PR`,
-    `(one function or a small family per PR, note compiler version + address).`,
-  ].join('\n')
+  const lines = [``]
+  if (P.rules) lines.push(`Rules: ${P.rules}`)
+  lines.push(
+    `Matched means byte-identical - iterate until the verify command reports a MATCH${n > 1 ? ' for each function, working one at a time (verify before moving on)' : ''}, then open a PR`,
+    `(one function or a small family per PR, note compiler version + address).`)
+  return lines.join('\n')
 }
 
 // ---- small components ------------------------------------------------------
@@ -197,8 +224,9 @@ function App() {
 
   // ---- live claims (via the vite dev proxy; refreshes every 60s) ----------
   async function loadClaims() {
+    if (!P.claimsApi) return
     try {
-      const r = await fetch('/api/claims')
+      const r = await fetch(P.claimsApi)
       if (!r.ok) throw new Error(String(r.status))
       const j = await r.json()
       setClaims(Array.isArray(j.claims) ? j.claims : [])
@@ -208,6 +236,7 @@ function App() {
     }
   }
   useEffect(() => {
+    if (!P.claimsApi) return
     loadClaims()
     const t = setInterval(loadClaims, 60_000)
     return () => clearInterval(t)
@@ -341,23 +370,25 @@ function App() {
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-aero-primary to-aero-accent flex items-center justify-center text-white font-semibold tracking-[-1px]">CV</div>
               <div>
-                <div className="text-3xl font-semibold tracking-[-1.5px]">Chaos Viewer</div>
-                <div className="text-aero-muted text-sm -mt-1">sm64ds-decomp</div>
+                <div className="text-3xl font-semibold tracking-[-1.5px]">{P.title ?? 'Chaos Viewer'}</div>
+                <div className="text-aero-muted text-sm -mt-1">{P.name}</div>
               </div>
             </div>
-            <div className="mt-1 text-[13px] text-aero-muted">Frutiger Aero decomp atlas • matching C from ashes of assembly</div>
+            <div className="mt-1 text-[13px] text-aero-muted">{P.tagline ?? 'decomp atlas'}</div>
           </div>
 
           <div className="text-right">
             <div className="font-semibold">{stats.matchedFunctions.toLocaleString()} / {stats.totalFunctions.toLocaleString()} functions <span className="text-aero-primary">({fnPct}%)</span></div>
             <div className="text-sm text-aero-muted">{stats.matchedBytes.toLocaleString()} / {stats.totalBytes.toLocaleString()} bytes <span className="text-aero-primary">({byPct}%)</span> • {stats.moduleCount} modules</div>
-            <div className="text-[11px] mt-0.5 flex items-center gap-1.5 justify-end">
-              <span className={`inline-block w-1.5 h-1.5 rounded-full ${claimsStatus === 'live' ? 'bg-emerald-400' : claimsStatus === 'loading' ? 'bg-amber-400' : 'bg-rose-400'}`} />
-              <span className="text-aero-muted">
-                claims {claimsStatus === 'live' ? `live · ${claims.length} active lock${claims.length === 1 ? '' : 's'}` : claimsStatus}
-              </span>
-              <button onClick={loadClaims} title="refresh claims" className="text-aero-muted hover:text-aero-primary"><RefreshCw className="w-3 h-3" /></button>
-            </div>
+            {P.claimsApi && (
+              <div className="text-[11px] mt-0.5 flex items-center gap-1.5 justify-end">
+                <span className={`inline-block w-1.5 h-1.5 rounded-full ${claimsStatus === 'live' ? 'bg-emerald-400' : claimsStatus === 'loading' ? 'bg-amber-400' : 'bg-rose-400'}`} />
+                <span className="text-aero-muted">
+                  claims {claimsStatus === 'live' ? `live · ${claims.length} active lock${claims.length === 1 ? '' : 's'}` : claimsStatus}
+                </span>
+                <button onClick={loadClaims} title="refresh claims" className="text-aero-muted hover:text-aero-primary"><RefreshCw className="w-3 h-3" /></button>
+              </div>
+            )}
           </div>
         </header>
 
@@ -586,7 +617,7 @@ function App() {
 
                   <div className="flex flex-wrap gap-4 text-xs">
                     {selectedFn.srcPath && (
-                      <a href={`${GITHUB}/blob/main/${selectedFn.srcPath}`} target="_blank" className="flex items-center gap-1 text-aero-primary hover:underline">
+                      <a href={`${P.github}/blob/main/${selectedFn.srcPath}`} target="_blank" className="flex items-center gap-1 text-aero-primary hover:underline">
                         <FileCode className="w-3.5 h-3.5" /> View matched source
                       </a>
                     )}

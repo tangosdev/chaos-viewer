@@ -211,7 +211,7 @@ def main():
             "matchedFunctions": matched_n,
             "totalBytes": total_bytes,
             "matchedBytes": matched_bytes,
-            "moduleCount": len(mods),
+            "moduleCount": len({u[0] for u in universe}),
         },
         "functions": functions,
     }

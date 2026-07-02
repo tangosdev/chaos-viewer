@@ -181,10 +181,7 @@ export function Treemap({ functions, selectedId, selectedPath, onSelect, height 
         })}
       </svg>
 
-      <div className="absolute top-2 left-2 glass px-2.5 py-1.5 text-[11px] flex items-center gap-3 pointer-events-none">
-        <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full" style={{background:'linear-gradient(180deg,#71dd8a,#2fae4e)', border:'1px solid rgba(255,255,255,0.9)'}} /> matched</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full" style={{background:'linear-gradient(180deg,#c3d4e3,#9fb4c8)', border:'1px solid rgba(255,255,255,0.9)'}} /> unmatched</span>
-      </div>
+
 
       {selectedId && (
         <button

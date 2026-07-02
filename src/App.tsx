@@ -335,6 +335,11 @@ function App() {
 
   function selectFunction(id: string) {
     setSelectedId(id)
+    const f = byId.get(id)
+    if (f) setSelectedPath(f.module)
+    setTimeout(() => {
+      document.getElementById(`fnrow-${id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }, 60)
   }
   function selectByName(name: string) {
     const f = byName.get(name)
@@ -368,10 +373,30 @@ function App() {
         <header className="mb-6 flex items-end justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center" style={{ border: '1px solid rgba(255,255,255,0.9)', boxShadow: '0 3px 10px rgba(21,78,128,0.25), inset 0 1px 0 #fff' }}>
-                <svg viewBox="0 0 100 100" className="w-7 h-7" aria-label="?">
-                  <path d="M32 34 C 28 20, 44 12, 56 16 C 70 20, 74 32, 66 41 C 60 48, 52 47, 51 56 L 50 63" fill="none" stroke="#1a1a1a" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M48 78 C 46 74, 50 71, 54 73 C 58 75, 56 81, 51 80 C 49 80, 48 79, 48 78 Z" fill="#1a1a1a" />
+              <div className="w-11 h-11 relative" aria-label="?">
+                <svg viewBox="0 0 100 100" className="w-11 h-11">
+                  <defs>
+                    <radialGradient id="lg-bubble" cx="35%" cy="28%" r="75%">
+                      <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
+                      <stop offset="35%" stopColor="#e8fbff" stopOpacity="0.55" />
+                      <stop offset="80%" stopColor="#bfe9ff" stopOpacity="0.35" />
+                      <stop offset="100%" stopColor="#9ed9f7" stopOpacity="0.5" />
+                    </radialGradient>
+                    <linearGradient id="lg-jelly" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#b8ec6a" />
+                      <stop offset="45%" stopColor="#7fd42e" />
+                      <stop offset="100%" stopColor="#4fae1f" />
+                    </linearGradient>
+                  </defs>
+                  <circle cx="50" cy="50" r="46" fill="url(#lg-bubble)" stroke="rgba(255,255,255,0.95)" strokeWidth="2.5" />
+                  <ellipse cx="34" cy="26" rx="14" ry="8" fill="white" opacity="0.85" transform="rotate(-24 34 26)" />
+                  <path d="M34 36 C 32 24, 46 17, 56 21 C 67 25, 70 35, 62 43 C 56 49, 50 48, 49 56 L 49 61"
+                        fill="none" stroke="url(#lg-jelly)" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M34 36 C 32 24, 46 17, 56 21 C 67 25, 70 35, 62 43 C 56 49, 50 48, 49 56 L 49 61"
+                        fill="none" stroke="#fff9d9" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.65"
+                        transform="translate(-1.5,-2)" />
+                  <circle cx="49" cy="74" r="7" fill="url(#lg-jelly)" />
+                  <circle cx="46.5" cy="71.5" r="2.2" fill="#fff9d9" opacity="0.8" />
                 </svg>
               </div>
               <div>
@@ -384,7 +409,7 @@ function App() {
 
           <div className="text-right">
             <div className="font-semibold">{stats.matchedFunctions.toLocaleString()} / {stats.totalFunctions.toLocaleString()} functions <span className="text-aero-primary">({fnPct}%)</span></div>
-            <div className="text-sm text-aero-muted">{stats.matchedBytes.toLocaleString()} / {stats.totalBytes.toLocaleString()} bytes <span className="text-aero-primary">({byPct}%)</span> • {stats.moduleCount} modules</div>
+            <div className="text-sm text-aero-muted">{stats.matchedBytes.toLocaleString()} / {stats.totalBytes.toLocaleString()} bytes <span className="text-aero-primary">({byPct}%)</span> • {modules.length} modules</div>
             {P.claimsApi && (
               <div className="text-[11px] mt-0.5 flex items-center gap-1.5 justify-end">
                 <span className={`inline-block w-1.5 h-1.5 rounded-full ${claimsStatus === 'live' ? 'bg-emerald-400' : claimsStatus === 'loading' ? 'bg-amber-400' : 'bg-rose-400'}`} />
@@ -441,9 +466,10 @@ function App() {
                       <span className="font-medium">{mod}</span>
                       <span className="text-[11px] tabular-nums text-aero-muted">{formatPct(s.matched, s.total)}% · {s.matched}/{s.total}</span>
                     </button>
-                    {open && modFns.slice(0, 400).map(fn => (
+                    {open && (selectedPath === mod ? modFns : modFns.slice(0, 400)).map(fn => (
                       <button
                         key={fn.id}
+                        id={`fnrow-${fn.id}`}
                         onClick={() => selectFunction(fn.id)}
                         className={`w-full text-left pl-6 pr-2 py-0.5 text-xs truncate rounded flex items-center gap-1.5 hover:bg-sky-600/10 ${selectedId === fn.id ? 'bg-aero-primary/15 text-aero-primary font-medium' : 'text-aero-muted'}`}
                         title={lockedBy.has(fn.id) ? `${fn.name} (locked by ${lockedBy.get(fn.id)})` : fn.name}

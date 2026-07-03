@@ -1008,7 +1008,7 @@ function App() {
     } else if (target === 'app') {
       // deep-link the desktop app if installed; the prompt rides the clipboard
       window.location.href = 'claude://new'
-      setCopyMsg('Prompt copied - paste it into the Claude app')
+      setCopyMsg('Prompt copied - allow the Open Claude? popup if your browser asks, then paste')
     } else if (target === 'vscode') {
       // protocol handler registered by VS Code; browsers cannot type into a
       // terminal, so the prompt rides the clipboard

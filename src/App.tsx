@@ -791,30 +791,32 @@ function App() {
     loadClaims()
   }
   async function loadClaims() {
+    // UNION of both sources: the live API (browser claims, agent try-locks)
+    // and the repo's CLAIMS.md rows (sessions that coordinate via rows only).
+    // A function claimed in either place leaves Priorities until done/released.
+    const collected: Claim[] = []
+    let anyLive = false
     if (P.claimsApi) {
       try {
         const r = await fetch(P.claimsApi)
-        if (!r.ok) throw new Error(String(r.status))
-        const j = await r.json()
-        setClaimsStable(Array.isArray(j.claims) ? j.claims : [])
-        setClaimsStatus('live')
-        return
-      } catch { /* fall through to CLAIMS.md */ }
+        if (r.ok) {
+          const j = await r.json()
+          if (Array.isArray(j.claims)) collected.push(...j.claims)
+          anyLive = true
+        }
+      } catch { /* api down; rows may still work */ }
     }
     const m = P.github?.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/)
-    if (!m) { setClaimsStatus('unavailable'); return }
-    try {
-      let text = ''
-      for (const br of ['main', 'master']) {
-        const r = await fetch(bust(`https://raw.githubusercontent.com/${m[1]}/${m[2]}/${br}/CLAIMS.md`))
-        if (r.ok) { text = await r.text(); break }
-      }
-      if (!text) throw new Error('no CLAIMS.md')
-      setClaimsStable(parseClaimsMd(text))
-      setClaimsStatus('live')
-    } catch {
-      setClaimsStatus('unavailable')
+    if (m) {
+      try {
+        for (const br of ['main', 'master']) {
+          const r = await fetch(bust(`https://raw.githubusercontent.com/${m[1]}/${m[2]}/${br}/CLAIMS.md`))
+          if (r.ok) { collected.push(...parseClaimsMd(await r.text())); anyLive = true; break }
+        }
+      } catch { /* no CLAIMS.md */ }
     }
+    if (anyLive) { setClaimsStable(collected); setClaimsStatus('live') }
+    else setClaimsStatus('unavailable')
   }
   useEffect(() => {
     localStorage.setItem('chaos-contrib', contribBubbles ? '1' : '0')

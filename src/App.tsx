@@ -51,6 +51,10 @@ interface ProjectConfig {
   readFirst?: string
   rules?: string
   claimsApi?: string
+  // claims-service GitHub sign-in entry point; when set, claiming is gated on
+  // GitHub auth (start URL gets ?redirect=<viewer>, comes back with
+  // #claims_session=<token>&handle=<github_login>)
+  claimsAuthUrl?: string
   discord?: string
 }
 
@@ -425,13 +429,13 @@ interface SetupModalProps {
   contrib: boolean
   setContrib: (v: boolean) => void
   canDismiss: boolean
-  claimKey: string
-  setClaimKey: (v: string) => void
   claimHandle: string
-  setClaimHandle: (v: string) => void
+  signedIn: boolean
+  onSignIn: () => void
+  onSignOut: () => void
 }
 
-function SetupModal({ open, onClose, contrib, setContrib, canDismiss, claimKey, setClaimKey, claimHandle, setClaimHandle }: SetupModalProps) {
+function SetupModal({ open, onClose, contrib, setContrib, canDismiss, claimHandle, signedIn, onSignIn, onSignOut }: SetupModalProps) {
   const [url, setUrl] = useState(P.github ?? '')
   const [advanced, setAdvanced] = useState('')
   const [err, setErr] = useState('')
@@ -526,26 +530,30 @@ function SetupModal({ open, onClose, contrib, setContrib, canDismiss, claimKey, 
         )}
         {canDismiss && P.claimsApi && (
           <div className="pt-1 space-y-1.5">
-            <div className="text-sm font-medium">Claims access</div>
+            <div className="text-sm font-medium">Claiming and credit</div>
             <div className="text-[11px] text-aero-muted">
-              Lets the claim buttons lock functions in your name. Get a personal API key from the
-              project's Discord bot (DM it the word "key"). Both are stored only in this browser.
+              Anyone can browse and build prompts. To claim functions (lock them while you work)
+              and get credit under your name, sign in with GitHub. Your claims show under your
+              GitHub handle, matching the contributor colors on the treemap.
             </div>
-            <div className="flex gap-2">
-              <input
-                value={claimHandle}
-                onChange={e => setClaimHandle(e.target.value)}
-                placeholder="your handle"
-                className="w-2/5 glass px-3 py-1.5 text-sm outline-none placeholder:text-aero-muted/60"
-              />
-              <input
-                value={claimKey}
-                onChange={e => setClaimKey(e.target.value)}
-                type="password"
-                placeholder="claims API key"
-                className="flex-1 glass px-3 py-1.5 text-sm outline-none placeholder:text-aero-muted/60"
-              />
-            </div>
+            {signedIn ? (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                signed in as <span className="mono font-medium">{claimHandle || 'unknown'}</span>
+                <button onClick={onSignOut} className="text-[11px] text-rose-500 hover:underline ml-1">sign out</button>
+              </div>
+            ) : P.claimsAuthUrl ? (
+              <button onClick={onSignIn} className="aero-button px-3 py-1.5 text-sm inline-flex items-center gap-2">
+                <svg viewBox="0 0 16 16" className="w-4 h-4" fill="currentColor" aria-hidden>
+                  <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
+                </svg>
+                Sign in with GitHub
+              </button>
+            ) : (
+              <div className="text-[11px] text-aero-muted italic">
+                GitHub sign-in is being wired up on the claims service; claiming unlocks as soon as it is live.
+              </div>
+            )}
           </div>
         )}
         <div className="flex justify-end gap-2">
@@ -635,27 +643,54 @@ function App() {
   }
 
   // ---- claim from the dashboard (claims API write path) --------------------
-  // POST try-lock/renew/release with the user's personal X-Api-Key (issued by
-  // the project's Discord bot; see /claims/about on the claims host). The key
-  // and handle live in localStorage only.
-  const [claimKey, setClaimKey] = useState(() => localStorage.getItem('chaos-claim-key') || '')
+  // Claiming is gated on GitHub sign-in: the claims service runs the OAuth
+  // dance (P.claimsAuthUrl) and redirects back with a session token + the
+  // user's GitHub login in the URL fragment. The token rides the X-Api-Key
+  // header on try-lock/renew/release, and the handle IS the GitHub login, so
+  // claims credit lines up with the contributor colors. Anyone can still
+  // browse and build prompts without signing in.
+  const [claimSession, setClaimSession] = useState(() => localStorage.getItem('chaos-claim-session') || '')
   const [claimHandle, setClaimHandle] = useState(() => localStorage.getItem('chaos-claim-handle') || '')
   const [myClaims, setMyClaims] = useState<{ id: string; module: string; start: number; end: number; name: string }[]>(() => {
     try { return JSON.parse(localStorage.getItem('chaos-my-claims') || '[]') } catch { return [] }
   })
   const [claimMsg, setClaimMsg] = useState('')
-  useEffect(() => { localStorage.setItem('chaos-claim-key', claimKey) }, [claimKey])
+  useEffect(() => { localStorage.setItem('chaos-claim-session', claimSession) }, [claimSession])
   useEffect(() => { localStorage.setItem('chaos-claim-handle', claimHandle) }, [claimHandle])
   useEffect(() => { localStorage.setItem('chaos-my-claims', JSON.stringify(myClaims)) }, [myClaims])
+
+  // capture the OAuth return: #claims_session=<token>&handle=<github_login>
+  useEffect(() => {
+    const m = window.location.hash.match(/claims_session=([^&]+)/)
+    const h = window.location.hash.match(/handle=([^&]+)/)
+    if (m) {
+      setClaimSession(decodeURIComponent(m[1]))
+      if (h) setClaimHandle(decodeURIComponent(h[1]))
+      history.replaceState(null, '', window.location.pathname + window.location.search)
+      setClaimMsg(h ? `Signed in as ${decodeURIComponent(h[1])}.` : 'Signed in.')
+    }
+  }, [])
+
+  function signInWithGitHub() {
+    if (!P.claimsAuthUrl) return
+    const u = new URL(P.claimsAuthUrl)
+    u.searchParams.set('redirect', window.location.origin + window.location.pathname + window.location.search)
+    window.location.href = u.toString()
+  }
+  function signOut() {
+    setClaimSession(''); setClaimHandle(''); setMyClaims([])
+    setClaimMsg('Signed out.')
+  }
 
   async function claimPost(path: string, body: object) {
     const r = await fetch(`${P.claimsApi}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Api-Key': claimKey },
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': claimSession },
       body: JSON.stringify(body),
     })
     let j: { ok?: boolean; error?: string; claim?: { id?: string } } = {}
     try { j = await r.json() } catch { /* non-json error body */ }
+    if (r.status === 401) { setClaimSession(''); throw new Error('Session expired; sign in with GitHub again (Settings).') }
     if (!r.ok || j.ok === false) throw new Error(j.error || `HTTP ${r.status}`)
     return j
   }
@@ -667,7 +702,11 @@ function App() {
   }
   async function claimFunctions(fns: ChaosFunction[]) {
     if (!P.claimsApi) return
-    if (!claimKey) { setClaimMsg('Set your claims API key in Settings first (DM the Discord bot "key" to get one).'); setSetupOpen(true); return }
+    if (!claimSession) {
+      setClaimMsg('Sign in with GitHub to claim functions and get credit (Settings).')
+      setSetupOpen(true)
+      return
+    }
     const handle = claimHandle || 'chaos-viewer-user'
     let locked = 0
     for (const f of fns) {
@@ -929,7 +968,7 @@ function App() {
         </div>
       )}
       <SetupModal open={setupOpen || !hasUsableData} onClose={() => setSetupOpen(false)} contrib={contribBubbles} setContrib={setContribBubbles} canDismiss={hasUsableData}
-        claimKey={claimKey} setClaimKey={setClaimKey} claimHandle={claimHandle} setClaimHandle={setClaimHandle} />
+        claimHandle={claimHandle} signedIn={!!claimSession} onSignIn={signInWithGitHub} onSignOut={signOut} />
 
       <div className="relative z-10 w-full max-w-[1900px] mx-auto px-4 sm:px-6 xl:px-10 py-6 xl:py-8 select-none">
         <header className="mb-6 flex items-end justify-between select-none">

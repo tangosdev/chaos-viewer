@@ -992,7 +992,7 @@ function App() {
   const promptText = batchPrompt ?? singlePrompt
 
   // hand the prompt to the user's own Claude: web chat, desktop app, or terminal
-  function openInClaude(target: 'web' | 'app' | 'code' | 'vscode') {
+  function openInClaude(target: 'web' | 'app' | 'code' | 'vscode' | 'grok' | 'cursor') {
     const text = promptText
     if (!text) return
     try { navigator.clipboard?.writeText(text).catch(() => legacyCopy(text)) } catch { legacyCopy(text) }
@@ -1009,6 +1009,18 @@ function App() {
       // deep-link the desktop app if installed; the prompt rides the clipboard
       window.location.href = 'claude://new'
       setCopyMsg('Prompt copied - allow the Open Claude? popup if your browser asks, then paste')
+    } else if (target === 'grok') {
+      const url = 'https://grok.com/?q=' + encodeURIComponent(text)
+      if (url.length < 8000) {
+        window.open(url, '_blank', 'noopener')
+        setCopyMsg('Opened in Grok')
+      } else {
+        window.open('https://grok.com/', '_blank', 'noopener')
+        setCopyMsg('Prompt copied - paste it into Grok')
+      }
+    } else if (target === 'cursor') {
+      window.location.href = 'cursor://'
+      setCopyMsg('Prompt copied - allow the Open Cursor? popup if asked, then paste')
     } else if (target === 'vscode') {
       // protocol handler registered by VS Code; browsers cannot type into a
       // terminal, so the prompt rides the clipboard
@@ -1395,6 +1407,8 @@ function App() {
                                   { k: 'app' as const, label: 'Claude desktop app', hint: 'launches the app; prompt is on your clipboard' },
                                   { k: 'vscode' as const, label: 'VS Code', hint: 'launches VS Code - run claude in its terminal and paste' },
                                   { k: 'code' as const, label: 'Claude Code (terminal)', hint: 'copies the prompt - run claude and paste' },
+                                  { k: 'grok' as const, label: 'Grok (web)', hint: 'opens a prefilled grok.com chat in a new tab' },
+                                  { k: 'cursor' as const, label: 'Cursor', hint: 'launches Cursor - prompt is on your clipboard' },
                                 ].map(o => (
                                   <button key={o.k}
                                           onClick={() => { setClaudeMenu(false); openInClaude(o.k) }}

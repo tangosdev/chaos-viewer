@@ -1077,7 +1077,7 @@ function App() {
         <div className="flex flex-col lg:flex-row gap-4">
           {/* Sidebar */}
           <div className="w-full lg:w-72 xl:w-80 flex-shrink-0 win overflow-hidden flex flex-col" style={{ minHeight: '420px', maxHeight: '80vh' }}>
-            <div className="win-titlebar"><span className="win-title">Modules</span><span className="win-btns" aria-hidden><span className="win-btn">&#8211;</span><span className="win-btn">&#9633;</span><span className="win-btn win-btn-close">&#10005;</span></span></div>
+            <div className="win-titlebar"><span className="win-title">Modules</span></div>
             <div className="p-3 overflow-hidden flex flex-col flex-1 min-h-0">
             <div className="px-2 pb-2 flex items-center gap-2 border-b border-white/70 mb-1">
               <Search className="w-4 h-4 text-aero-muted" />
@@ -1164,7 +1164,7 @@ function App() {
           {/* Main content */}
           <div className="flex-1 min-w-0 space-y-4">
             <div className="win">
-              <div className="win-titlebar"><span className="win-title">{P.name || 'Atlas'}</span><span className="win-btns" aria-hidden><span className="win-btn">&#8211;</span><span className="win-btn">&#9633;</span><span className="win-btn win-btn-close">&#10005;</span></span></div>
+              <div className="win-titlebar"><span className="win-title">{P.name || 'Atlas'}</span></div>
               <div className="tab-strip">
                 {[
                   { id: 'treemap' as const, label: 'Treemap Explorer' },
@@ -1346,7 +1346,7 @@ function App() {
             <AnimatePresence>
               {selectedFn && (
                 <motion.div initial={{opacity:0, y:6}} animate={{opacity:1, y:0}} exit={{opacity:0}} className="win">
-                  <div className="win-titlebar"><span className="win-title mono">{selectedFn.name}</span><span className="win-btns" aria-hidden><span className="win-btn">&#8211;</span><span className="win-btn">&#9633;</span><button className="win-btn win-btn-close" style={{cursor:'pointer'}} onClick={() => setSelectedId(null)}>&#10005;</button></span></div>
+                  <div className="win-titlebar"><span className="win-title mono">{selectedFn.name}</span><button style={{cursor:'pointer', opacity:0.85}} onClick={() => setSelectedId(null)} title="close">&#10005;</button></div>
                   <div className="win-body space-y-3">
                   <div className="flex justify-between items-start">
                     <div>

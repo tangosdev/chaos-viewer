@@ -992,7 +992,7 @@ function App() {
   const promptText = batchPrompt ?? singlePrompt
 
   // hand the prompt to the user's own Claude: web chat, desktop app, or terminal
-  function openInClaude(target: 'web' | 'app' | 'code') {
+  function openInClaude(target: 'web' | 'app' | 'code' | 'vscode') {
     const text = promptText
     if (!text) return
     try { navigator.clipboard?.writeText(text).catch(() => legacyCopy(text)) } catch { legacyCopy(text) }
@@ -1009,6 +1009,11 @@ function App() {
       // deep-link the desktop app if installed; the prompt rides the clipboard
       window.location.href = 'claude://new'
       setCopyMsg('Prompt copied - paste it into the Claude app')
+    } else if (target === 'vscode') {
+      // protocol handler registered by VS Code; browsers cannot type into a
+      // terminal, so the prompt rides the clipboard
+      window.location.href = 'vscode://'
+      setCopyMsg('Prompt copied - run claude in the VS Code terminal and paste')
     } else {
       setCopyMsg('Prompt copied - run claude in a terminal and paste')
     }
@@ -1388,6 +1393,7 @@ function App() {
                                 {[
                                   { k: 'web' as const, label: 'claude.ai (web)', hint: 'opens a prefilled chat in a new tab' },
                                   { k: 'app' as const, label: 'Claude desktop app', hint: 'launches the app; prompt is on your clipboard' },
+                                  { k: 'vscode' as const, label: 'VS Code', hint: 'launches VS Code - run claude in its terminal and paste' },
                                   { k: 'code' as const, label: 'Claude Code (terminal)', hint: 'copies the prompt - run claude and paste' },
                                 ].map(o => (
                                   <button key={o.k}

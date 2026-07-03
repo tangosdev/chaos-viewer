@@ -419,7 +419,19 @@ function PopLogo() {
   )
 }
 
-function SetupModal({ open, onClose, contrib, setContrib, canDismiss }: { open: boolean; onClose: () => void; contrib: boolean; setContrib: (v: boolean) => void; canDismiss: boolean }) {
+interface SetupModalProps {
+  open: boolean
+  onClose: () => void
+  contrib: boolean
+  setContrib: (v: boolean) => void
+  canDismiss: boolean
+  claimKey: string
+  setClaimKey: (v: string) => void
+  claimHandle: string
+  setClaimHandle: (v: string) => void
+}
+
+function SetupModal({ open, onClose, contrib, setContrib, canDismiss, claimKey, setClaimKey, claimHandle, setClaimHandle }: SetupModalProps) {
   const [url, setUrl] = useState(P.github ?? '')
   const [advanced, setAdvanced] = useState('')
   const [err, setErr] = useState('')
@@ -512,6 +524,30 @@ function SetupModal({ open, onClose, contrib, setContrib, canDismiss }: { open: 
             </span>
           </label>
         )}
+        {canDismiss && P.claimsApi && (
+          <div className="pt-1 space-y-1.5">
+            <div className="text-sm font-medium">Claims access</div>
+            <div className="text-[11px] text-aero-muted">
+              Lets the claim buttons lock functions in your name. Get a personal API key from the
+              project's Discord bot (DM it the word "key"). Both are stored only in this browser.
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={claimHandle}
+                onChange={e => setClaimHandle(e.target.value)}
+                placeholder="your handle"
+                className="w-2/5 glass px-3 py-1.5 text-sm outline-none placeholder:text-aero-muted/60"
+              />
+              <input
+                value={claimKey}
+                onChange={e => setClaimKey(e.target.value)}
+                type="password"
+                placeholder="claims API key"
+                className="flex-1 glass px-3 py-1.5 text-sm outline-none placeholder:text-aero-muted/60"
+              />
+            </div>
+          </div>
+        )}
         <div className="flex justify-end gap-2">
           {canDismiss && (
             <button onClick={() => { localStorage.removeItem('chaos-project'); location.href = location.origin + location.pathname }}
@@ -596,6 +632,70 @@ function App() {
   // so downstream memos (lockedBy -> the 11k-rect treemap) don't re-render
   function setClaimsStable(next: Claim[]) {
     setClaims(prev => JSON.stringify(prev) === JSON.stringify(next) ? prev : next)
+  }
+
+  // ---- claim from the dashboard (claims API write path) --------------------
+  // POST try-lock/renew/release with the user's personal X-Api-Key (issued by
+  // the project's Discord bot; see /claims/about on the claims host). The key
+  // and handle live in localStorage only.
+  const [claimKey, setClaimKey] = useState(() => localStorage.getItem('chaos-claim-key') || '')
+  const [claimHandle, setClaimHandle] = useState(() => localStorage.getItem('chaos-claim-handle') || '')
+  const [myClaims, setMyClaims] = useState<{ id: string; module: string; start: number; end: number; name: string }[]>(() => {
+    try { return JSON.parse(localStorage.getItem('chaos-my-claims') || '[]') } catch { return [] }
+  })
+  const [claimMsg, setClaimMsg] = useState('')
+  useEffect(() => { localStorage.setItem('chaos-claim-key', claimKey) }, [claimKey])
+  useEffect(() => { localStorage.setItem('chaos-claim-handle', claimHandle) }, [claimHandle])
+  useEffect(() => { localStorage.setItem('chaos-my-claims', JSON.stringify(myClaims)) }, [myClaims])
+
+  async function claimPost(path: string, body: object) {
+    const r = await fetch(`${P.claimsApi}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': claimKey },
+      body: JSON.stringify(body),
+    })
+    let j: { ok?: boolean; error?: string; claim?: { id?: string } } = {}
+    try { j = await r.json() } catch { /* non-json error body */ }
+    if (!r.ok || j.ok === false) throw new Error(j.error || `HTTP ${r.status}`)
+    return j
+  }
+  function corsHint(err: unknown) {
+    // a cross-origin POST the service has not allow-listed fails as a TypeError
+    return err instanceof TypeError
+      ? `The claims service does not accept browser writes from this site yet. Ask the claims admin to CORS-allow POST (try-lock/renew/release, with the X-Api-Key header) from ${window.location.origin}.`
+      : String(err instanceof Error ? err.message : err)
+  }
+  async function claimFunctions(fns: ChaosFunction[]) {
+    if (!P.claimsApi) return
+    if (!claimKey) { setClaimMsg('Set your claims API key in Settings first (DM the Discord bot "key" to get one).'); setSetupOpen(true); return }
+    const handle = claimHandle || 'chaos-viewer-user'
+    let locked = 0
+    for (const f of fns) {
+      try {
+        const j = await claimPost('/try-lock', {
+          module: f.module, start: `0x${f.addr.toString(16)}`, end: `0x${(f.addr + f.size).toString(16)}`,
+          handle, note: `via Chaos Viewer: ${f.name}`,
+        })
+        if (j.claim?.id) setMyClaims(prev => [...prev, { id: String(j.claim!.id), module: f.module, start: f.addr, end: f.addr + f.size, name: f.name }])
+        locked++
+      } catch (err) {
+        setClaimMsg(`${f.name}: ${corsHint(err)}`)
+        break
+      }
+    }
+    if (locked === fns.length) setClaimMsg(`Locked ${locked} function${locked === 1 ? '' : 's'} as ${handle}.`)
+    loadClaims()
+  }
+  async function myClaimsAction(action: 'renew' | 'release') {
+    const handle = claimHandle || 'chaos-viewer-user'
+    const keep: typeof myClaims = []
+    for (const c of myClaims) {
+      try { await claimPost(`/${c.id}/${action}`, { handle }); if (action === 'renew') keep.push(c) }
+      catch (err) { setClaimMsg(corsHint(err)); keep.push(c) }
+    }
+    setMyClaims(keep)
+    if (action === 'release') setClaimMsg('Released.')
+    loadClaims()
   }
   async function loadClaims() {
     if (P.claimsApi) {
@@ -828,7 +928,8 @@ function App() {
           functions, generate its data (see ADAPTING.md) and open this page with <code>?data=&lt;url-to-chaos-db.json&gt;</code>.
         </div>
       )}
-      <SetupModal open={setupOpen || !hasUsableData} onClose={() => setSetupOpen(false)} contrib={contribBubbles} setContrib={setContribBubbles} canDismiss={hasUsableData} />
+      <SetupModal open={setupOpen || !hasUsableData} onClose={() => setSetupOpen(false)} contrib={contribBubbles} setContrib={setContribBubbles} canDismiss={hasUsableData}
+        claimKey={claimKey} setClaimKey={setClaimKey} claimHandle={claimHandle} setClaimHandle={setClaimHandle} />
 
       <div className="relative z-10 w-full max-w-[1900px] mx-auto px-4 sm:px-6 xl:px-10 py-6 xl:py-8 select-none">
         <header className="mb-6 flex items-end justify-between select-none">
@@ -877,7 +978,19 @@ function App() {
                 <span className="text-aero-muted">
                   claims {claimsStatus === 'live' ? `live · ${claims.length} active lock${claims.length === 1 ? '' : 's'}` : claimsStatus}
                 </span>
-                <button onClick={loadClaims} title="refresh claims (from the repo's CLAIMS.md)" className="text-aero-muted hover:text-aero-primary"><RefreshCw className="w-3 h-3" /></button>
+                {myClaims.length > 0 && (
+                  <span className="text-aero-muted">
+                    · mine: {myClaims.length}
+                    <button onClick={() => myClaimsAction('renew')} className="ml-1 text-aero-primary hover:underline">renew</button>
+                    <button onClick={() => myClaimsAction('release')} className="ml-1 text-rose-500 hover:underline">release</button>
+                  </span>
+                )}
+                <button onClick={loadClaims} title="refresh claims" className="text-aero-muted hover:text-aero-primary"><RefreshCw className="w-3 h-3" /></button>
+              </div>
+            )}
+            {claimMsg && (
+              <div className="text-[11px] mt-0.5 text-aero-muted max-w-[380px] text-right">
+                {claimMsg} <button onClick={() => setClaimMsg('')} className="text-aero-primary hover:underline">dismiss</button>
               </div>
             )}
           </div>
@@ -1091,6 +1204,15 @@ function App() {
                         ) : null
                       })}
                       <button onClick={() => setBatch([])} className="text-[11px] text-aero-muted hover:text-rose-600 underline ml-1">clear</button>
+                      {P.claimsApi && (
+                        <button
+                          onClick={() => claimFunctions(batch.map(id => byId.get(id)!).filter(f => f && !lockedBy.has(f.id)))}
+                          className="text-[11px] text-aero-primary hover:underline ml-1 inline-flex items-center gap-0.5"
+                          title="lock every function in this batch on the claims service"
+                        >
+                          <Lock className="w-3 h-3" /> claim batch
+                        </button>
+                      )}
                     </div>
                   )}
 
@@ -1150,6 +1272,11 @@ function App() {
                       <div className="text-xs text-aero-muted mt-0.5">{selectedFn.module} • 0x{selectedFn.addr.toString(16)} • {selectedFn.size.toLocaleString()} bytes{selectedFn.cat ? ` • ${selectedFn.cat}` : ''}</div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {!selectedFn.matched && P.claimsApi && !lockedBy.has(selectedFn.id) && !myClaims.some(c => c.module === selectedFn.module && selectedFn.addr >= c.start && selectedFn.addr < c.end) && (
+                        <button onClick={() => claimFunctions([selectedFn])} className="aero-button px-2 py-0.5 text-[11px] inline-flex items-center gap-1" title="lock this function on the claims service so nobody grinds it in parallel">
+                          <Lock className="w-3 h-3" /> claim
+                        </button>
+                      )}
                       {!selectedFn.matched && (
                         <button onClick={() => toggleBatch(selectedFn.id)} className="aero-button px-2 py-0.5 text-[11px] inline-flex items-center gap-1">
                           {batch.includes(selectedFn.id) ? <><Minus className="w-3 h-3" /> remove from batch</> : <><Plus className="w-3 h-3" /> add to batch</>}

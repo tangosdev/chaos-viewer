@@ -1,8 +1,8 @@
 # Chaos Viewer
 
 An interactive progress atlas and contributor funnel for matching-decompilation projects.
-Every function in the game on one screen, the best next targets one click away, and a
-ready-to-paste AI prompt for any of them.
+It shows every function in the game on one screen, ranks what is worth working on next,
+and builds a ready-to-paste AI prompt for any of them.
 
 **Live:** https://bmanus2-dotcom.github.io/chaos-viewer/
 **View-only mirror (no sign-in, no claiming):** https://bmanus2-dotcom.github.io/chaos-viewer/public/
@@ -12,13 +12,13 @@ ready-to-paste AI prompt for any of them.
 I run [sm64ds-decomp](https://github.com/bmanus2-dotcom/sm64ds-decomp), a from-scratch
 matching decompilation of Super Mario 64 DS. A matching decomp is thousands of small,
 verifiable tasks: pick a function, write C, compile it with the original compiler, and
-check it against the ROM byte for byte. The work itself is fine. The coordination is the
-hard part: knowing what is done, what is close, what is worth doing next, and who is
+check it against the ROM byte for byte. The hard part is not the individual functions, it is the
+coordination: knowing what is done, what is close, what is worth doing next, and who is
 already working on what.
 
 I had a static treemap image in the README and a markdown table for claims. Both were
 always stale, and neither helped anyone actually start. Chaos Viewer replaced them with
-one page that answers all of it live: the whole game as a map, the near-misses ranked by
+one live page: the whole game as a map, the near-misses ranked by
 how close they are, live locks so two people never grind the same function, and a Prompt
 Builder that turns any function into a complete task an AI assistant can run. The goal is
 that someone who has never touched the project can land their first verified match in one
@@ -48,12 +48,11 @@ sitting, and get credit for it under their own name.
   assistant locks its own ranges before writing code, renews while it works, and releases
   when it is done.
 - **Contributor colors.** Flip a toggle and every matched function tints by who matched
-  it, with a legend linking to each contributor's GitHub. Credit is visible, permanent,
-  and automatic: it comes from git authorship, not from anyone remembering to update a
-  list.
+  it, with a legend linking to each contributor's GitHub. Credit comes from git authorship, so it is
+  automatic and permanent, and nobody has to remember to update a list.
 - **Always current.** The data regenerates in CI on every push to the project repo, and
-  the page fetches fresh on every open. Nobody maintains a progress image ever again.
-- **Themes.** Five glossy themes. Maybe more.
+  the page fetches fresh on every open, so nobody has to regenerate a progress image by hand.
+- **Themes.** Five glossy themes.
 
 ## Use it on your project
 
@@ -71,7 +70,7 @@ you publish.
 2. **Publish it.** The recommended home is an orphan `chaos-data` branch of your repo,
    so the data never bloats your main history. `data/chaos-db.json` on your default
    branch works too.
-3. **Point the viewer at it.** Open the hosted viewer, paste your repo URL, done: it
+3. **Point the viewer at it.** Open the hosted viewer and paste your repo URL. It
    probes the standard locations and finds your data. Share a preconfigured link
    (`?data=<raw-url-to-your-chaos-db.json>`) and your contributors skip even that step.
 
@@ -103,8 +102,7 @@ coordination service that powers the live locks, the GitHub sign-in, and the who
 claim-from-the-page flow, and designed its agent-facing API so AI assistants can lock
 their own work safely. On the decomp side he has matched hundreds of functions across
 arm9 and dozens of overlays, contributed compiler-behavior research that directly raised
-every contributor's hit rate, hardened the matching workflow, and reported the bugs that
-mattered. The viewer's contributor coloring exists in large part so that work like his
+every contributor's hit rate, hardened the matching workflow, and reported and helped fix real scheduler bugs. The viewer's contributor coloring exists in large part so that work like his
 is permanently visible. Thank you, Andrew.
 
 Inspired by [Mizuchi's Decomp Atlas](https://github.com/macabeus/mizuchi). Built for
@@ -125,4 +123,3 @@ More tools for the matching-decomp workflow are in the pipeline:
 - **PR from the page**: a verified match becomes a pull request without leaving the
   browser
 - **More project adapters** for common decomp toolchains (splat, objdiff, frogress)
-- And more. Watch this repo.

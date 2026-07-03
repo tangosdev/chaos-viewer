@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Search, BarChart3, Code2, ChevronRight, X, Target, Link2, FileCode, Lock, RefreshCw, Plus, Minus, Palette, Settings, MessageCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Treemap } from './components/Treemap'
@@ -592,13 +592,18 @@ function App() {
   // Source of truth is the repo's CLAIMS.md (works from the static hosted hub,
   // no service needed): active table rows become locks. A claimsApi service,
   // when configured AND reachable, takes precedence (dev proxy setups).
+  // keep the previous array identity when the poll returns identical claims,
+  // so downstream memos (lockedBy -> the 11k-rect treemap) don't re-render
+  function setClaimsStable(next: Claim[]) {
+    setClaims(prev => JSON.stringify(prev) === JSON.stringify(next) ? prev : next)
+  }
   async function loadClaims() {
     if (P.claimsApi) {
       try {
         const r = await fetch(P.claimsApi)
         if (!r.ok) throw new Error(String(r.status))
         const j = await r.json()
-        setClaims(Array.isArray(j.claims) ? j.claims : [])
+        setClaimsStable(Array.isArray(j.claims) ? j.claims : [])
         setClaimsStatus('live')
         return
       } catch { /* fall through to CLAIMS.md */ }
@@ -612,7 +617,7 @@ function App() {
         if (r.ok) { text = await r.text(); break }
       }
       if (!text) throw new Error('no CLAIMS.md')
-      setClaims(parseClaimsMd(text))
+      setClaimsStable(parseClaimsMd(text))
       setClaimsStatus('live')
     } catch {
       setClaimsStatus('unavailable')
@@ -684,15 +689,26 @@ function App() {
     return m
   }, [claims, db])
 
-  const q = search.toLowerCase()
-  const filtered = db.functions.filter(f =>
-    !search ||
-    f.name.toLowerCase().includes(q) ||
-    f.module.toLowerCase().includes(q) ||
-    f.id.includes(q)
-  )
+  // memoized: these feed the 11k-rect treemap, whose SVG must NOT re-render on
+  // unrelated state changes (claims polls, copy clicks...) - that blocked the
+  // main thread for seconds and made the mouse lag after load
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    return db.functions.filter(f =>
+      !search ||
+      f.name.toLowerCase().includes(q) ||
+      f.module.toLowerCase().includes(q) ||
+      f.id.includes(q)
+    )
+  }, [db, search])
 
-  const visible = filtered.filter(f => !(hideMatched && f.matched) && !(hideUnmatched && !f.matched))
+  const visible = useMemo(
+    () => filtered.filter(f => !(hideMatched && f.matched) && !(hideUnmatched && !f.matched)),
+    [filtered, hideMatched, hideUnmatched])
+  const tmFunctions = useMemo(
+    () => visible.map(f => ({ id: f.id, module: f.module, name: f.name, size: f.size, matched: f.matched })),
+    [visible])
+  const lockedIdsSet = useMemo(() => new Set(lockedBy.keys()), [lockedBy])
 
   const byName = useMemo(() => new Map(db.functions.map(f => [f.name, f])), [db])
   const byId = useMemo(() => new Map(db.functions.map(f => [f.id, f])), [db])
@@ -768,6 +784,16 @@ function App() {
       document.getElementById(`fnrow-${id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     }, 60)
   }
+  // stable identity so the memoized Treemap skips re-renders from parent state
+  const selectFromTreemap = useCallback((id: string) => {
+    if (id === '__clear__') { setSelectedId(null); return }
+    setSelectedId(id)
+    const f = byId.get(id)
+    if (f) setSelectedPath(f.module)
+    setTimeout(() => {
+      document.getElementById(`fnrow-${id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }, 60)
+  }, [byId])
   function selectByName(name: string) {
     const f = byName.get(name)
     if (f) setSelectedId(f.id)
@@ -979,15 +1005,12 @@ function App() {
                     </div>
                   </div>
                   <Treemap
-                    functions={visible.map(f => ({ id: f.id, module: f.module, name: f.name, size: f.size, matched: f.matched }))}
+                    functions={tmFunctions}
                     selectedId={selectedId}
                     selectedPath={selectedPath}
-                    lockedIds={new Set(lockedBy.keys())}
+                    lockedIds={lockedIdsSet}
                     colors={contribColors}
-                    onSelect={(id) => {
-                      if (id === '__clear__') { setSelectedId(null); return }
-                      selectFunction(id)
-                    }}
+                    onSelect={selectFromTreemap}
                   />
                   {colorByContrib && contributors.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">

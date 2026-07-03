@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { squarify } from '../lib/squarify'
 
 export interface TreemapFunc {
@@ -37,7 +37,9 @@ const INNER = 2
 const MIN_H = 300
 const MAX_H = 1400
 
-export function Treemap({ functions, selectedId, selectedPath, lockedIds, colors, onSelect }: TreemapProps) {
+// memo: the SVG holds ~11k rects; rebuilding it blocks the main thread for
+// seconds, so it must only re-render when its own props actually change
+export const Treemap = memo(function Treemap({ functions, selectedId, selectedPath, lockedIds, colors, onSelect }: TreemapProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(1080)
   const [height, setHeight] = useState(() => {
@@ -270,4 +272,4 @@ export function Treemap({ functions, selectedId, selectedPath, lockedIds, colors
       </div>
     </div>
   )
-}
+})

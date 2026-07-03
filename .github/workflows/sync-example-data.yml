@@ -1,0 +1,30 @@
+# Keeps the example-data branch (old saved links / bookmarks load this) in sync
+# with sm64ds-decomp's auto-refreshed chaos-data branch, so no link ever serves
+# a stale snapshot.
+name: sync-example-data
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: example-data
+      - name: Pull latest sm64ds data
+        run: curl -fsSL "https://raw.githubusercontent.com/bmanus2-dotcom/sm64ds-decomp/chaos-data/chaos-db.json?t=$(date +%s)" -o sm64ds/chaos-db.json
+      - name: Push if changed
+        run: |
+          if git diff --quiet; then echo "in sync"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add sm64ds/chaos-db.json
+          git commit -m "Sync sm64ds example data from chaos-data"
+          git push origin example-data

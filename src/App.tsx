@@ -1207,7 +1207,7 @@ function App() {
 
           {/* Main content */}
           <div className="flex-1 min-w-0 space-y-4">
-            <div className="win">
+            <div className="win" style={{ position: 'relative', zIndex: claudeMenu ? 40 : undefined }}>
               <div className="win-titlebar"><span className="win-title">{P.name || 'Atlas'}</span></div>
               <div className="tab-strip">
                 {[

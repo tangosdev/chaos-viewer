@@ -1388,7 +1388,7 @@ function App() {
                             &#9662;
                           </button>
                           {claudeMenu && (
-                            <div className="absolute left-0 top-full mt-1 z-20 win" style={{ minWidth: 250 }}>
+                            <div className="absolute left-0 top-full mt-1 z-20 win aero-modal" style={{ minWidth: 250 }}>
                               <div className="p-1 text-sm">
                                 {[
                                   { k: 'web' as const, label: 'claude.ai (web)', hint: 'opens a prefilled chat in a new tab' },

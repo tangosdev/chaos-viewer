@@ -289,7 +289,9 @@ export const Treemap = memo(function Treemap({ functions, selectedId, selectedPa
       <div
         ref={tipRef}
         className="absolute z-10 pointer-events-none px-2 py-1 rounded text-[11px] mono"
-        style={{ display: 'none', background: 'rgb(var(--aero-text-rgb) / 0.85)', color: 'rgb(var(--aero-gloss-rgb) / 0.98)', maxWidth: 320 }}
+        // solid dark chip on every theme: the old theme-var colors went
+        // light-on-light on dark themes and were unreadable over the treemap
+        style={{ display: 'none', background: 'rgba(8, 16, 26, 0.92)', color: '#f2f7fb', border: '1px solid rgba(255,255,255,0.18)', maxWidth: 320 }}
       />
 
       {selectedId && (

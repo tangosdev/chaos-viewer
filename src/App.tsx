@@ -1048,8 +1048,8 @@ function App() {
         claimHandle={claimHandle} signedIn={!!claimSession} onSignIn={signInWithGitHub} onSignOut={signOut} />
 
       <div className="relative z-10 w-full px-3 sm:px-4 py-4 select-none">
-        <header className="mb-4 flex flex-col lg:flex-row gap-3 items-stretch select-none">
-          <div className="aero-banner flex-1 px-5 py-4 flex flex-col items-center justify-center text-center">
+        <header className="mb-4 flex flex-col lg:flex-row gap-3 lg:justify-between items-start select-none">
+          <div className="aero-banner px-6 py-4 flex flex-col items-center justify-center text-center">
             <div className="flex items-center gap-3">
               <PopLogo />
               <div>
@@ -1080,7 +1080,7 @@ function App() {
             )}
           </div>
 
-          <div className="aero-banner flex-1 px-5 py-4 flex flex-col items-center justify-center text-center">
+          <div className="aero-banner px-6 py-4 flex flex-col items-center justify-center text-center">
             <div className="font-semibold">{stats.matchedFunctions.toLocaleString()} / {stats.totalFunctions.toLocaleString()} functions <span className="text-aero-primary">({fnPct}%)</span></div>
             <div className="text-sm text-aero-muted">{stats.matchedBytes.toLocaleString()} / {stats.totalBytes.toLocaleString()} bytes <span className="text-aero-primary">({byPct}%)</span> • {modules.length} modules</div>
             <div className="text-[11px] mt-1 flex items-center gap-2 justify-center">

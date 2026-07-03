@@ -640,6 +640,7 @@ function App() {
   const [detail, setDetail] = useState<FunctionDetail | null>(null)
   const [copied, setCopied] = useState(false)
   const [copyMsg, setCopyMsg] = useState('')
+  const [claudeMenu, setClaudeMenu] = useState(false)
   const [copyKey, setCopyKey] = useState(0)
   const [hideMatched, setHideMatched] = useState(false)
   const [hideUnmatched, setHideUnmatched] = useState(false)
@@ -989,6 +990,32 @@ function App() {
     ? [promptHeader(1), promptSection(selectedFn, detail), promptFooter(1)].join('\n\n')
     : null
   const promptText = batchPrompt ?? singlePrompt
+
+  // hand the prompt to the user's own Claude: web chat, desktop app, or terminal
+  function openInClaude(target: 'web' | 'app' | 'code') {
+    const text = promptText
+    if (!text) return
+    try { navigator.clipboard?.writeText(text).catch(() => legacyCopy(text)) } catch { legacyCopy(text) }
+    if (target === 'web') {
+      const url = 'https://claude.ai/new?q=' + encodeURIComponent(text)
+      if (url.length < 8000) {
+        window.open(url, '_blank', 'noopener')
+        setCopyMsg('Opened in Claude')
+      } else {
+        window.open('https://claude.ai/new', '_blank', 'noopener')
+        setCopyMsg('Prompt copied - paste it into Claude')
+      }
+    } else if (target === 'app') {
+      // deep-link the desktop app if installed; the prompt rides the clipboard
+      window.location.href = 'claude://new'
+      setCopyMsg('Prompt copied - paste it into the Claude app')
+    } else {
+      setCopyMsg('Prompt copied - run claude in a terminal and paste')
+    }
+    setCopyKey(k => k + 1)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2600)
+  }
 
   return (
     <div className="min-h-screen text-[15px] text-aero-text">
@@ -1340,29 +1367,40 @@ function App() {
                         >
                           {copied ? copyMsg : `Copy prompt${batch.length ? ` (${batch.length} functions)` : ''}`}
                         </button>
-                        <button
-                          onClick={() => {
-                            const text = promptText
-                            // always copy first: the paste fallback and truncation safety net
-                            try { navigator.clipboard?.writeText(text).catch(() => legacyCopy(text)) } catch { legacyCopy(text) }
-                            const url = 'https://claude.ai/new?q=' + encodeURIComponent(text)
-                            if (url.length < 8000) {
-                              window.open(url, '_blank', 'noopener')
-                              setCopyMsg('Opened in Claude')
-                            } else {
-                              // too big for a URL: open a fresh chat, prompt is on the clipboard
-                              window.open('https://claude.ai/new', '_blank', 'noopener')
-                              setCopyMsg('Prompt copied - paste it into Claude')
-                            }
-                            setCopyKey(k => k + 1)
-                            setCopied(true)
-                            setTimeout(() => setCopied(false), 2200)
-                          }}
-                          className="aero-button px-3 py-1 text-sm"
-                          title="open a new claude.ai chat on your own account with this prompt (large prompts are copied for a one-tap paste)"
-                        >
-                          Open in Claude
-                        </button>
+                        <span className="relative inline-flex">
+                          <button
+                            onClick={() => { setClaudeMenu(false); openInClaude('web') }}
+                            className="aero-button px-3 py-1 text-sm rounded-r-none"
+                            title="open a new claude.ai chat on your own account with this prompt (large prompts are copied for a one-tap paste)"
+                          >
+                            Open in Claude
+                          </button>
+                          <button
+                            onClick={() => setClaudeMenu(m => !m)}
+                            className="aero-button px-2 py-1 text-sm rounded-l-none border-l border-white/40"
+                            title="pick where to open this prompt"
+                          >
+                            &#9662;
+                          </button>
+                          {claudeMenu && (
+                            <div className="absolute left-0 top-full mt-1 z-20 win" style={{ minWidth: 250 }}>
+                              <div className="p-1 text-sm">
+                                {[
+                                  { k: 'web' as const, label: 'claude.ai (web)', hint: 'opens a prefilled chat in a new tab' },
+                                  { k: 'app' as const, label: 'Claude desktop app', hint: 'launches the app; prompt is on your clipboard' },
+                                  { k: 'code' as const, label: 'Claude Code (terminal)', hint: 'copies the prompt - run claude and paste' },
+                                ].map(o => (
+                                  <button key={o.k}
+                                          onClick={() => { setClaudeMenu(false); openInClaude(o.k) }}
+                                          className="w-full text-left px-3 py-1.5 rounded hover:bg-sky-600/10">
+                                    <span className="font-medium">{o.label}</span>
+                                    <span className="block text-[11px] text-aero-muted">{o.hint}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </span>
                         {typeof navigator.share === 'function' && (
                           <button
                             onClick={() => { navigator.share({ text: promptText }).catch(() => {}) }}

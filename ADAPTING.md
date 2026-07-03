@@ -39,7 +39,26 @@ If you use a claims/locking service, point the vite dev proxy at it in
 (`start`/`end` as numbers or "0x..." strings). No service? Delete `claimsApi`
 from the config and the UI disappears.
 
-## 2. Data schema
+## 2. Publishing so the hosted viewer finds you
+
+When someone enters your repo link on the hosted viewer's setup screen, it probes
+these locations for your `chaos-db.json` (first hit wins):
+
+1. a dedicated **`chaos-data` branch** of your repo, at `chaos-db.json` or
+   `data/chaos-db.json` (recommended: keeps the large atlas data out of your
+   main history; put `details/<module>.json` next to the db file)
+2. `data/chaos-db.json` or `chaos-db.json` on `main` / `master`
+3. `docs/chaos-db.json` on `main`, or your GitHub Pages site
+
+The recommended setup is an orphan branch:
+
+```
+git checkout --orphan chaos-data && git rm -rf .
+cp path/to/chaos-db.json . && cp -r path/to/details .
+git add -A && git commit -m "Publish Chaos Viewer atlas data" && git push -u origin chaos-data
+```
+
+## 3. Data schema
 
 ### data/chaos-db.json (required)
 
@@ -89,7 +108,7 @@ from the config and the UI disappears.
 Skip the chunks entirely and the viewer still works (badges, treemap, prioritize,
 prompts without disassembly).
 
-## 3. Where your numbers come from - three recipes
+## 4. Where your numbers come from - three recipes
 
 - **You have your own progress database** (like sm64ds-decomp): write a script that
   walks it, mirroring `scripts/generate-chaos-db.py`.
@@ -100,7 +119,7 @@ prompts without disassembly).
   counts; you will need your symbol map (name/addr/size per overlay) for the function
   list and your repo's src/ layout for `matched`.
 
-## 4. Ship it
+## 5. Ship it
 
 ```bash
 npm run build          # static dist/ (index + data chunks) - host anywhere (GitHub Pages)

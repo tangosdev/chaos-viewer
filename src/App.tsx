@@ -116,6 +116,10 @@ async function discoverData(github: string): Promise<string | null> {
   if (!m) return null
   const [, owner, name] = m
   const cands = [
+    // dedicated data branch first: keeps the (large) atlas data out of the
+    // project's main history, and raw.githubusercontent is CORS-open
+    `https://raw.githubusercontent.com/${owner}/${name}/chaos-data/chaos-db.json`,
+    `https://raw.githubusercontent.com/${owner}/${name}/chaos-data/data/chaos-db.json`,
     `https://raw.githubusercontent.com/${owner}/${name}/main/data/chaos-db.json`,
     `https://raw.githubusercontent.com/${owner}/${name}/main/chaos-db.json`,
     `https://raw.githubusercontent.com/${owner}/${name}/master/data/chaos-db.json`,

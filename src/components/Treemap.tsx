@@ -14,6 +14,7 @@ interface TreemapProps {
   selectedId: string | null
   selectedPath: string | null
   lockedIds?: Set<string>
+  colors?: Map<string, string>   // per-function fill override (contributor coloring)
   onSelect: (id: string) => void
 }
 
@@ -36,7 +37,7 @@ const INNER = 2
 const MIN_H = 300
 const MAX_H = 1400
 
-export function Treemap({ functions, selectedId, selectedPath, lockedIds, onSelect }: TreemapProps) {
+export function Treemap({ functions, selectedId, selectedPath, lockedIds, colors, onSelect }: TreemapProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(1080)
   const [height, setHeight] = useState(() => {
@@ -202,7 +203,7 @@ export function Treemap({ functions, selectedId, selectedPath, lockedIds, onSele
           const isLocked = !r.isModuleLabel && lockedIds?.has(r.id)
           const isDim = selectedPath ? !r.id.startsWith(`mod:${selectedPath}`) && !r.id.includes(selectedPath) : false
 
-          let fill = r.matched ? C.matchedFlat : C.unmatchedFlat
+          let fill = r.matched ? (colors?.get(r.id) ?? C.matchedFlat) : C.unmatchedFlat
           if (isLocked) fill = 'url(#tm-locked)'
           if (r.isModuleLabel) fill = C.glossLabel
           if (isDim && !isLocked) fill = r.isModuleLabel ? C.glossDim : C.unmatchedDim

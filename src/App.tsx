@@ -75,6 +75,10 @@ import bundledDb from '../data/chaos-db.json' with { type: 'json' }
 
 const BUNDLED: ChaosDb = bundledDb as ChaosDb
 
+// public-release build (npm run build:public): a view-only tool - no claims
+// locks, no GitHub sign-in, no service interaction. Prompt copying stays.
+const VIEW_ONLY = import.meta.env.MODE === 'publicview'
+
 // ---- link config: ?repo= / ?discord= / ?data= make a fully pre-set-up shareable URL ----
 const _url = new URL(window.location.href)
 function _param(k: string) { return _url.searchParams.get(k) || _url.hash.match(new RegExp(`[#&]${k}=([^&]+)`))?.[1] }
@@ -552,7 +556,7 @@ function SetupModal({ open, onClose, contrib, setContrib, canDismiss, claimHandl
             </span>
           </label>
         )}
-        {canDismiss && P.claimsApi && (
+        {canDismiss && P.claimsApi && !VIEW_ONLY && (
           <div className="pt-1 space-y-1.5">
             <div className="text-sm font-medium">Claiming and credit</div>
             <div className="text-[11px] text-aero-muted">
@@ -695,6 +699,7 @@ function App() {
 
   // capture the OAuth return: #claims_session=<token>&handle=<github_login>
   useEffect(() => {
+    if (VIEW_ONLY) return
     const m = window.location.hash.match(/claims_session=([^&]+)/)
     const h = window.location.hash.match(/handle=([^&]+)/)
     if (m) {
@@ -815,7 +820,7 @@ function App() {
   }, [contribBubbles])
 
   useEffect(() => {
-    if (!P.claimsApi && !P.github) return
+    if (VIEW_ONLY || (!P.claimsApi && !P.github)) return
     loadClaims()
     const t = setInterval(loadClaims, 60_000)
     return () => clearInterval(t)
@@ -1094,7 +1099,7 @@ function App() {
               <ThemePicker />
               <button onClick={() => setSetupOpen(true)} title="project settings" className="text-aero-muted hover:text-aero-primary"><Settings className="w-3.5 h-3.5" /></button>
             </div>
-            {(P.claimsApi || P.github) && claimsStatus !== 'unavailable' && (
+            {!VIEW_ONLY && (P.claimsApi || P.github) && claimsStatus !== 'unavailable' && (
               <div className="text-[11px] mt-0.5 flex items-center gap-1.5 justify-center flex-wrap">
                 <span className={`inline-block w-1.5 h-1.5 rounded-full ${claimsStatus === 'live' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
                 <span className="text-aero-muted">
@@ -1278,7 +1283,7 @@ function App() {
               {activeTab === 'prioritize' && (
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <div className="font-medium">Priorities <span className="text-[11px] text-aero-muted font-normal">(claims-locked functions hidden)</span></div>
+                    <div className="font-medium">Priorities {!VIEW_ONLY && <span className="text-[11px] text-aero-muted font-normal">(claims-locked functions hidden)</span>}</div>
                     <div className="flex gap-1">
                       {([
                         ['nearly', 'Nearly done'],
@@ -1339,7 +1344,7 @@ function App() {
                         ) : null
                       })}
                       <button onClick={() => setBatch([])} className="text-[11px] text-aero-muted hover:text-rose-600 underline ml-1">clear</button>
-                      {P.claimsApi && (
+                      {!VIEW_ONLY && P.claimsApi && (
                         <button
                           onClick={() => claimFunctions(batch.map(id => byId.get(id)!).filter(f => f && !lockedBy.has(f.id)))}
                           className="text-[11px] text-aero-primary hover:underline ml-1 inline-flex items-center gap-0.5"
@@ -1447,7 +1452,7 @@ function App() {
                       <div className="text-xs text-aero-muted mt-0.5">{selectedFn.module} • 0x{selectedFn.addr.toString(16)} • {selectedFn.size.toLocaleString()} bytes{selectedFn.cat ? ` • ${selectedFn.cat}` : ''}</div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {!selectedFn.matched && P.claimsApi && !lockedBy.has(selectedFn.id) && !myClaims.some(c => c.module === selectedFn.module && selectedFn.addr >= c.start && selectedFn.addr < c.end) && (
+                      {!VIEW_ONLY && !selectedFn.matched && P.claimsApi && !lockedBy.has(selectedFn.id) && !myClaims.some(c => c.module === selectedFn.module && selectedFn.addr >= c.start && selectedFn.addr < c.end) && (
                         <button onClick={() => claimFunctions([selectedFn])} className="aero-button px-2 py-0.5 text-[11px] inline-flex items-center gap-1" title="lock this function on the claims service so nobody grinds it in parallel">
                           <Lock className="w-3 h-3" /> claim
                         </button>

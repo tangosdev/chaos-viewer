@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build",
     "build:single": "vite build --mode single",
     "preview": "vite preview",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "build:public": "tsc -b && vite build --mode publicview"
   },
   "dependencies": {
     "d3": "^7.9.0",

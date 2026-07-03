@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Search, BarChart3, Code2, ChevronRight, X, Target, Link2, FileCode, Lock, RefreshCw, Plus, Minus, Palette, Settings, MessageCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Treemap } from './components/Treemap'
@@ -387,7 +387,16 @@ function ThemePicker() {
 
 function PopLogo() {
   const [state, setState] = useState<'idle' | 'pop' | 'inflate'>('idle')
+  const pops = useRef<number[]>([])
   function popIt() {
+    const now = Date.now()
+    pops.current = [...pops.current.filter(t => now - t < 10_000), now]
+    if (pops.current.length >= 10) {
+      pops.current = []
+      const next = document.documentElement.dataset.theme === 'hal' ? 'aero' : 'hal'
+      document.documentElement.dataset.theme = next
+      localStorage.setItem('chaos-theme', next)
+    }
     if (state !== 'idle') return
     setState('pop')
     setTimeout(() => setState('inflate'), 330)
@@ -633,6 +642,15 @@ function App() {
   const stats = db.stats
   const fnPct = formatPct(stats.matchedFunctions, stats.totalFunctions)
   const byPct = formatPct(stats.matchedBytes, stats.totalBytes)
+
+  // track the active theme; some UI swaps with it
+  const [docTheme, setDocTheme] = useState(() => document.documentElement.dataset.theme || 'aero')
+  useEffect(() => {
+    const mo = new MutationObserver(() => setDocTheme(document.documentElement.dataset.theme || 'aero'))
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => mo.disconnect()
+  }, [])
+  const isHal = docTheme === 'hal'
 
   // ---- live claims ---------------------------------------------------------
   // Source of truth is the repo's CLAIMS.md (works from the static hosted hub,
@@ -978,8 +996,8 @@ function App() {
             <div className="flex items-center gap-3">
               <PopLogo />
               <div>
-                <div className="text-3xl font-semibold tracking-[-1.5px]">Chaos Viewer</div>
-                <div className="text-aero-muted text-sm -mt-1">Bring order to the chaos</div>
+                <div className="text-3xl font-semibold tracking-[-1.5px]">{isHal ? 'Opie-9000' : 'Chaos Viewer'}</div>
+                <div className="text-aero-muted text-sm -mt-1">{isHal ? 'I am completely operational, and all my circuits are functioning perfectly' : 'Bring order to the chaos'}</div>
               </div>
             </div>
             {P.github ? (

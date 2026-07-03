@@ -310,6 +310,20 @@ function promptSection(fn: ChaosFunction, det: FunctionDetail | null) {
   return lines.join('\n')
 }
 
+function promptClaimsBlock(claimsApi: string | undefined, session: string, handle: string) {
+  if (!claimsApi) return null
+  if (!session) {
+    return `CLAIMS (coordination - ask before starting, so nobody double-works a range): sign in with GitHub (Settings, "Claim functions") and paste the resulting X-Api-Key token in for me before you begin.`
+  }
+  return [
+    `CLAIMS (coordination - call this before/while editing so nobody double-works a range):`,
+    `  Before starting a function: POST ${claimsApi}/try-lock  {"module":"<module>","start":"0x<addr>","end":"0x<addr+size>","handle":"${handle || 'chaos-viewer-user'}"}`,
+    `    header: X-Api-Key: ${session}`,
+    `  Renew while working, release when done: POST ${claimsApi}/{id}/renew or /release  {"handle":"${handle || 'chaos-viewer-user'}"}`,
+    `  A 409 means overlap - inspect conflicts, pick a different function, or ask.`,
+  ].join('\n')
+}
+
 function promptFooter(n: number) {
   const lines = [``]
   if (P.rules) lines.push(`Rules: ${P.rules}`)
@@ -904,6 +918,8 @@ function App() {
     let cancelled = false
     ;(async () => {
       const parts: string[] = [promptHeader(batch.length)]
+      const claims = promptClaimsBlock(P.claimsApi, claimSession, claimHandle)
+      if (claims) parts.push(claims)
       for (const id of batch) {
         const f = byId.get(id)
         if (!f) continue
@@ -915,7 +931,7 @@ function App() {
       if (!cancelled) setBatchPrompt(parts.join('\n\n'))
     })()
     return () => { cancelled = true }
-  }, [batch, activeTab])
+  }, [batch, activeTab, claimSession, claimHandle])
 
   function selectFunction(id: string) {
     setSelectedId(id)
@@ -955,7 +971,8 @@ function App() {
   })()
 
   const singlePrompt = selectedFn && batch.length === 0
-    ? [promptHeader(1), promptSection(selectedFn, detail), promptFooter(1)].join('\n\n')
+    ? [promptHeader(1), promptClaimsBlock(P.claimsApi, claimSession, claimHandle), promptSection(selectedFn, detail), promptFooter(1)]
+        .filter(Boolean).join('\n\n')
     : null
   const promptText = batchPrompt ?? singlePrompt
 

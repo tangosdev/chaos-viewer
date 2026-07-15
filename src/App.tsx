@@ -1245,7 +1245,9 @@ function App() {
             <div className="flex-1 overflow-auto text-sm space-y-px pr-1 custom-scroll">
               {modules.map(mod => {
                 const modFns = visible.filter(f => f.module === mod)
-                if (search && modFns.length === 0) return null
+                // same filters as the treemap: fully matched modules vanish when
+                // "Hide matched" is on (and symmetrically for hide-unmatched / search)
+                if (modFns.length === 0) return null
                 const s = moduleStats.get(mod)!
                 const open = selectedPath === mod || (!!search && modFns.length <= 60)
                 return (

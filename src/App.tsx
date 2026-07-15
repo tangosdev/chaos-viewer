@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Search, ChevronRight, X, Link2, FileCode, Lock, RefreshCw, Plus, Minus, Palette, Settings, MessageCircle } from 'lucide-react'
+import { Search, ChevronRight, X, Link2, FileCode, Lock, RefreshCw, Plus, Minus, Palette, Settings, MessageCircle, User } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Treemap } from './components/Treemap'
 import { Bubbles } from './components/Bubbles'
@@ -365,7 +365,7 @@ function promptFooter(n: number) {
 
 function StatusBadge({ fn, lockedBy }: { fn: ChaosFunction; lockedBy?: string }) {
   return (
-    <span className="inline-flex gap-1.5">
+    <span className="inline-flex gap-1.5 items-center">
       {fn.matched
         ? <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-400/30 text-emerald-800 border border-emerald-600/40">MATCHED</span>
         : fn.div != null
@@ -373,6 +373,11 @@ function StatusBadge({ fn, lockedBy }: { fn: ChaosFunction; lockedBy?: string })
           : fn.floor
             ? <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-rose-300/30 text-rose-700 border border-rose-500/40" title={fn.floor}>FLOOR</span>
             : <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-300/40 text-slate-700 border border-slate-500/40">UNMATCHED</span>}
+      {fn.matched && fn.author && (
+        <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-sky-300/40 text-sky-900 border border-sky-600/40 inline-flex items-center gap-1" title={`matched by ${fn.author}`}>
+          <User className="w-3 h-3" /> {fn.author}
+        </span>
+      )}
       {lockedBy && !fn.matched && (
         <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-violet-300/40 text-violet-800 border border-violet-600/40 inline-flex items-center gap-1" title={`claims-locked by ${lockedBy}`}>
           <Lock className="w-3 h-3" /> {lockedBy}

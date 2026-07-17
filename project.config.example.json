@@ -7,5 +7,6 @@
   "verifyCommand": "python tools/verify.py --func {name} --addr 0x{addrHex} --size 0x{sizeHex}",
   "readFirst": "the docs a contributor should read before writing code",
   "rules": "any legal / originality rules for contributions",
+  "_note_tracking": "This fork always uses MATCH_RESULT prompts + matchProvenance on matched functions (how only; who stays on author).",
   "_note_claims": "OPTIONAL and project-specific: only set claimsApi + claimsProxyTarget if you run a locking service. Omit both and the lock UI is hidden entirely. This is not part of the shipped viewer."
 }

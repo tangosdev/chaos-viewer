@@ -9,7 +9,7 @@ from two things you provide.
    chunks, produced by ANY script that emits the schema below
 
 The included `scripts/generate-chaos-db.py` is the reference generator for
-[sm64ds-decomp](https://github.com/tangosdev/sm64ds-decomp); write your own for
+[sm64ds-decomp](https://github.com/bmanus2-dotcom/sm64ds-decomp); write your own for
 your project and everything else works unchanged.
 
 ## 1. project.config.json
@@ -34,6 +34,25 @@ your project and everything else works unchanged.
 ```
 
 `verifyCommand` placeholders: `{name} {module} {addr} {addrHex} {size} {sizeHex} {github}`.
+
+### Attempt tree + matchProvenance (this fork)
+
+This fork always scaffolds **MATCH_RESULT** attempt-tree logging in prompts and
+expects **how** records on matched functions. Credit / colors still use
+**`author` only**.
+
+**`matchProvenance` shape** (atlas field on each matched function):
+
+```json
+{ "kind": "human", "note": "optional" }
+{ "kind": "ai", "model": "grok-4.5", "reasoning": "high", "harness": "grok-build" }
+```
+
+Use slug tokens (no spaces). Per-try history stays in the decomp repo (e.g.
+`config/match_attempts.jsonl`), not in the published atlas.
+
+> Local fork only — do not push this to tangosdev/chaos-viewer without discussing
+> with Tango first.
 
 If you use a claims/locking service, point the vite dev proxy at it in
 `vite.config.ts` (the `/api/claims` entry) and have it answer

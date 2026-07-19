@@ -13,7 +13,7 @@ export default defineConfig({
       // the claims service has no CORS headers; proxy it so the app can show
       // live locked/free status while developing locally
       '/api/claims': {
-        target: 'https://belongto.us',
+        target: 'https://tangos.dev',
         changeOrigin: true,
       },
     },

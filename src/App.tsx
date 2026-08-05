@@ -268,10 +268,12 @@ async function fetchDetail(module: string, name: string): Promise<FunctionDetail
   return detailCache.get(module)?.[name] ?? null
 }
 
+const MOD_RE = /\b(?:ov\d{3}|arm9|itcm|dtcm)\b/i
+
 // Parse a repo's CLAIMS.md coordination table into locks. Rows look like
 // | ov002 func_x (0x021019d0, size 0x5470) | handle | 2026-07-02 | done |
 // Active rows (status not done/merged/example/abandoned) yield one lock per
-// "(0xADDR, size 0xSZ)" span; the module comes from an ovNNN token near the
+// "(0xADDR, size 0xSZ)" span; the module comes from a MOD_RE token near the
 // span (or in the row), defaulting to arm9.
 function parseClaimsMd(text: string): Claim[] {
   const out: Claim[] = []
@@ -284,13 +286,18 @@ function parseClaimsMd(text: string): Claim[] {
     if (/\b(done|merged|example|abandoned|released)\b/i.test(status)) continue
     if (/^(Range|范围)$/i.test(range)) continue                       // header row
     const spanRe = /(\S*)\s*\((0x[0-9a-fA-F]{6,9})\s*,\s*size\s*(0x[0-9a-fA-F]+)\)/g
-    const rowMod = range.match(/\bov\d{3}\b/)?.[0] ?? (/\barm9\b/i.test(range) ? 'arm9' : null)
+    // MOD_RE has to cover every module the db can contain, not just overlays.
+    // While it was /ov\d{3}/ plus arm9, an itcm claim row fell through to the
+    // 'arm9' default, so the lock was filed against arm9 and the itcm function
+    // it named still rendered as unclaimed -- two people could take the same
+    // work. Keep this in step with relocs.iter_symbol_files() in the decomp.
+    const rowMod = range.match(MOD_RE)?.[0].toLowerCase() ?? null
     let sm: RegExpExecArray | null
     let found = false
     while ((sm = spanRe.exec(range)) !== null) {
       found = true
       const start = parseInt(sm[2], 16)
-      const mod = sm[1].match(/ov\d{3}/)?.[0] ?? rowMod ?? 'arm9'
+      const mod = sm[1].match(MOD_RE)?.[0].toLowerCase() ?? rowMod ?? 'arm9'
       out.push({ module: mod, start, end: start + parseInt(sm[3], 16), handle: who })
     }
     // bare range form: "ov004 0x020b0000-0x020b8000"

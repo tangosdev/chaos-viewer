@@ -252,6 +252,12 @@ function legacyCopy(text: string) {
 // detail chunks still cache within the session
 const SESSION_T = Date.now()
 function bust(u: string) { return u + (u.includes('?') ? '&' : '?') + 't=' + SESSION_T }
+// The published snapshot needs a token that is fresh PER FETCH, not per session.
+// With SESSION_T the re-fetch URL is byte-identical to the first one, so the CDN
+// and the browser both answer from cache and the window shows whatever it saw at
+// launch, forever. A browser tab hides this because people reload; a desktop app
+// left open does not, and the header still says "updates automatically".
+function bustNow(u: string) { return u + (u.includes('?') ? '&' : '?') + 't=' + Date.now() }
 
 const detailCache = new Map<string, Record<string, FunctionDetail>>()
 
@@ -859,19 +865,32 @@ function App() {
   const [dataLoading, setDataLoading] = useState(!!DATA_URL_INIT)
   const [dataError, setDataError] = useState(false)
   // (hasUsableData defined below)
+  // bumped on a timer so the snapshot is re-read while the window stays open
+  const [dataTick, setDataTick] = useState(0)
   // load the project's own data file when we have one
   useEffect(() => {
     if (!dataUrl) return
     DETAILS_BASE = dataUrl.replace(/[^/]*$/, '') + 'details/'
     detailCache.clear()
     let cancelled = false
-    setDataLoading(true); setDataError(false)
-    fetch(bust(dataUrl)).then(r => r.ok ? r.json() : Promise.reject(r.status)).then((j: ChaosDb) => {
+    // Only the first load drives the spinner and the error panel. A failed poll
+    // must leave the data already on screen alone rather than blanking it.
+    const first = dataTick === 0
+    if (first) { setDataLoading(true); setDataError(false) }
+    fetch(bustNow(dataUrl)).then(r => r.ok ? r.json() : Promise.reject(r.status)).then((j: ChaosDb) => {
       if (cancelled) return
       if (j.project) P = { ...j.project, ...urlProject }   // URL repo/discord still win
       setDb(j); setDataLoading(false)
-    }).catch(() => { if (!cancelled) { setDataLoading(false); setDataError(true) } })
+    }).catch(() => { if (!cancelled && first) { setDataLoading(false); setDataError(true) } })
     return () => { cancelled = true }
+  }, [dataUrl, dataTick])
+  // Re-read the published snapshot every five minutes. Claims already refresh on
+  // their own 60s timer, which is why the header could honestly say "live" while
+  // the progress numbers had not moved since launch.
+  useEffect(() => {
+    if (!dataUrl) return
+    const t = setInterval(() => setDataTick(n => n + 1), 5 * 60_000)
+    return () => clearInterval(t)
   }, [dataUrl])
   // a repo-only link (?repo=) with no bundled data: try to discover its data file
   useEffect(() => {

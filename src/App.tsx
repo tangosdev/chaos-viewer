@@ -344,6 +344,29 @@ function toNum(v: string | number): number {
   return typeof v === 'number' ? v : parseInt(v, v.startsWith('0x') ? 16 : 10)
 }
 
+// The two claim sources disagree on spelling: GET /claims answers camelCase with hex
+// string addresses, the /live stream answers PascalCase with decimal numbers. Everything
+// downstream reads the camelCase shape, so normalize here rather than teaching each
+// consumer both spellings -- fed the stream shape raw, every claim silently loses its
+// module and address and the header reports active locks that never render. toNum already
+// copes with either address format, so only the keys need fixing.
+function normalizeClaim(raw: unknown): Claim | null {
+  const c = raw as Record<string, unknown>
+  if (!c || typeof c !== 'object') return null
+  const module = (c.module ?? c.Module) as string | undefined
+  const start = (c.start ?? c.Start) as string | number | undefined
+  const end = (c.end ?? c.End) as string | number | undefined
+  if (typeof module !== 'string' || start == null || end == null) return null
+  return {
+    id: (c.id ?? c.Id) as string | undefined,
+    module,
+    start,
+    end,
+    handle: (c.handle ?? c.Handle) as string | undefined,
+    note: (c.note ?? c.Note) as string | undefined,
+  }
+}
+
 // ---- prompt building ------------------------------------------------------
 
 function promptHeader(n: number) {
@@ -881,7 +904,24 @@ type PriorityMode = 'nearly' | 'scaffolded' | 'biggest'
 type SortMode = 'name' | 'pctAsc' | 'pctDesc' | 'count' | 'bytes'
 
 function App() {
-  const [db, setDb] = useState<ChaosDb>(BUNDLED)
+  const [rawDb, setRawDb] = useState<ChaosDb>(BUNDLED)
+  // Live match state pushed from the backend, merged over the published snapshot below.
+  const [live, setLive] = useState<{
+    stats: Partial<ChaosDb['stats']>
+    matched: Set<string>
+  } | null>(null)
+  // What the rest of the app reads. The backend reproduces the same matched rule CI
+  // uses, so when it has data it is simply fresher than the published snapshot: the
+  // tiles and the progress bar both follow it, while authors, sizes and near-miss notes
+  // keep coming from the published copy, which is the only thing that carries them.
+  const db = useMemo<ChaosDb>(() => {
+    if (!live) return rawDb
+    const functions = rawDb.functions.map(f => {
+      const matched = live.matched.has(f.id)
+      return matched === f.matched ? f : { ...f, matched }
+    })
+    return { ...rawDb, functions, stats: { ...rawDb.stats, ...live.stats } }
+  }, [rawDb, live])
   const [dataUrl, setDataUrl] = useState<string | null>(DATA_URL_INIT)
   const [dataLoading, setDataLoading] = useState(!!DATA_URL_INIT)
   const [dataError, setDataError] = useState(false)
@@ -904,7 +944,7 @@ function App() {
       // only) would otherwise drop its own github and verify command on load, taking
       // the repo pill and the contributor prompt down with them.
       if (j.project) P = { ...(savedProject ?? {}), ...j.project, ...urlProject }   // URL repo/discord still win
-      setDb(j); setDataLoading(false)
+      setRawDb(j); setDataLoading(false)
     }).catch(() => { if (!cancelled && first) { setDataLoading(false); setDataError(true) } })
     return () => { cancelled = true }
   }, [dataUrl, dataTick])
@@ -937,15 +977,56 @@ function App() {
   // wrong contributors' colors onto this atlas. No backend means no cosmetics, which is
   // honest; it does not mean borrowing another project's.
   const [cosmetics, setCosmetics] = useState<{ colors: Record<string, string> } | null>(null)
-  const cosmeticsBase = P.claimsApi && /\/claims\/?$/.test(P.claimsApi) ? P.claimsApi.replace(/\/claims\/?$/, '') : null
+  const apiBase = P.claimsApi && /\/claims\/?$/.test(P.claimsApi) ? P.claimsApi.replace(/\/claims\/?$/, '') : null
+  // Fetched once so the first paint is already correct, then kept current by the stream.
   useEffect(() => {
-    if (!cosmeticsBase) { setCosmetics(null); return }
+    if (!apiBase) { setCosmetics(null); return }
     let cancelled = false
-    fetch(`${cosmeticsBase}/cosmetics`).then(r => (r.ok ? r.json() : null)).then(j => {
+    fetch(`${apiBase}/cosmetics`).then(r => (r.ok ? r.json() : null)).then(j => {
       if (!cancelled && j && j.colors) setCosmetics({ colors: j.colors })
     }).catch(() => { /* cosmetics are decoration; the rank palette is a fine fallback */ })
     return () => { cancelled = true }
-  }, [cosmeticsBase])
+  }, [apiBase])
+
+  // Live push from the backend: a color bought in the shop, a new claim, or a landed
+  // match shows up within seconds instead of waiting for the five-minute snapshot poll.
+  // Everything here is additive over the published data, so a project with no backend,
+  // or a browser with no EventSource, just keeps the polled behaviour.
+  useEffect(() => {
+    if (!apiBase || typeof EventSource === 'undefined') return
+    const es = new EventSource(`${apiBase}/live`)
+    // Full matched set on connect, added/removed deltas afterwards, so a routine
+    // update stays tiny. Rebuild from the delta against whatever we already hold.
+    es.addEventListener('progress', e => {
+      try {
+        const j = JSON.parse((e as MessageEvent).data)
+        if (!j?.ready) return
+        setLive(prev => {
+          const base: string[] = Array.isArray(j.matched) ? j.matched : [...(prev?.matched ?? [])]
+          const next = new Set<string>(base)
+          for (const id of (j.added ?? []) as string[]) next.add(id)
+          for (const id of (j.removed ?? []) as string[]) next.delete(id)
+          return { stats: j.stats ?? {}, matched: next }
+        })
+      } catch { /* ignore a malformed frame */ }
+    })
+    es.addEventListener('cosmetics', e => {
+      try {
+        const j = JSON.parse((e as MessageEvent).data)
+        if (j && j.colors) setCosmetics({ colors: j.colors })
+      } catch { /* ignore a malformed frame */ }
+    })
+    es.addEventListener('claims', e => {
+      try {
+        const j = JSON.parse((e as MessageEvent).data)
+        if (Array.isArray(j.active)) {
+          setClaimsStable(j.active.map(normalizeClaim).filter((c: Claim | null): c is Claim => !!c))
+          setClaimsStatus('live')
+        }
+      } catch { /* ignore a malformed frame */ }
+    })
+    return () => es.close()
+  }, [apiBase])
 
   // The project is chosen at runtime now, so a title baked into index.html would keep
   // naming whichever project this build happened to bundle. Keyed on db because P is
@@ -1479,7 +1560,7 @@ function App() {
       )}
       <SetupModal open={setupOpen || !hasUsableData} onClose={() => setSetupOpen(false)} contrib={contribBubbles} setContrib={setContribBubbles} canDismiss={hasUsableData}
         claimHandle={claimHandle} signedIn={!!claimSession} onSignIn={signInWithGitHub} onSignOut={signOut}
-        onLoadLocal={d => { setDataUrl(null); setDb(d); setSetupOpen(false) }} />
+        onLoadLocal={d => { setDataUrl(null); setRawDb(d); setLive(null); setSetupOpen(false) }} />
 
       <div className="relative z-10 w-full px-3 sm:px-4 py-4 select-none">
         <header className="mb-4 flex flex-col lg:flex-row gap-3 lg:justify-between items-start select-none">

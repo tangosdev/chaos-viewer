@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <radialGradient id="fav-bubble" cx="35%" cy="28%" r="75%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="35%" stop-color="#e8fbff" stop-opacity="0.75"/>
+      <stop offset="80%" stop-color="#bfe9ff" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#9ed9f7" stop-opacity="0.85"/>
+    </radialGradient>
+    <linearGradient id="fav-jelly" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#b8ec6a"/>
+      <stop offset="45%" stop-color="#7fd42e"/>
+      <stop offset="100%" stop-color="#4fae1f"/>
+    </linearGradient>
+  </defs>
+  <circle cx="50" cy="50" r="46" fill="url(#fav-bubble)" stroke="rgba(255,255,255,0.95)" stroke-width="2.5"/>
+  <ellipse cx="34" cy="26" rx="14" ry="8" fill="white" opacity="0.85" transform="rotate(-24 34 26)"/>
+  <path d="M34 36 C 32 24, 46 17, 56 21 C 67 25, 70 35, 62 43 C 56 49, 50 48, 49 56 L 49 61"
+        fill="none" stroke="url(#fav-jelly)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M34 36 C 32 24, 46 17, 56 21 C 67 25, 70 35, 62 43 C 56 49, 50 48, 49 56 L 49 61"
+        fill="none" stroke="#fff9d9" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.65"
+        transform="translate(-1.5,-2)"/>
+  <circle cx="49" cy="74" r="7" fill="url(#fav-jelly)"/>
+  <circle cx="46.5" cy="71.5" r="2.2" fill="#fff9d9" opacity="0.8"/>
+</svg>

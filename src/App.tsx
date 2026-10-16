@@ -220,7 +220,7 @@ const SIBLINGS: { name: string; title: string; github: string; dataUrl: string }
   },
 ]
 
-const AUTHOR = 'Brennen (Tango)'
+const AUTHOR = 'Tango'
 const AUTHOR_URL = 'https://github.com/tangosdev'
 // featured example atlases, loaded via ?data= (hosted alongside the app)
 // the featured example points at the project's own auto-refreshed chaos-data
